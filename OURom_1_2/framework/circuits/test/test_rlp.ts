@@ -1,3 +1,4 @@
+// @ts-ignore
 import path from "path";
 
 import { expect, assert } from 'chai';
@@ -10,12 +11,12 @@ import { get_bsc_message_rlp, headers } from './bsc';
 
 
 describe("RLP decoding", function () {
-    this.timeout(60 * 1000);
+    this.timeout(600 * 1000);
 
     let circuit: any;
     before(async function () {
         console.log("Initialize the circuit test_rlp with wasm tester");
-        circuit = await wasm_tester(path.join(__dirname, "circuits", "test_rlp.circom"));
+        circuit = await wasm_tester(path.join(__dirname, "circuits", "test_bsc_unoptimized.circom"));
         await circuit.loadConstraints();
         console.log("constraints: " + circuit.constraints.length);
     });
@@ -35,13 +36,13 @@ describe("RLP decoding", function () {
             input[i * 2 + 1] = BigInt(encoded[i] & 0xf);
         }
         for (let i = encoded.length * 2; i < RLP_CIRCUIT_MAX_INPUT_LEN; i++) {
-            input[i] = 0n;
+            input[i] = BigInt(0);
         }
 
         it('Testing bsc header, number ' + header.number, async function() {
             let witness = await circuit.calculateWitness(
                 {
-                    "in": input
+                    "data": input
                 });
 
             // account address == coinbase

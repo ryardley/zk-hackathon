@@ -17,7 +17,6 @@ template SubArray(maxDataLen, maxSubLen) {
     signal input start;
     signal input end;
     signal output out[maxSubLen];
-    signal output outLen;
 
     component lt1 = LessEqThan(indexBits);
     lt1.in[0] <== start;
@@ -34,15 +33,13 @@ template SubArray(maxDataLen, maxSubLen) {
     lt3.in[1] <== maxSubLen;
     lt3.out === 1;
 
-    outLen <== end - start;
-
     component indexes[maxSubLen];
     for (var i = 0; i < maxSubLen; i++) {
-        indexes[i] <== Index(maxDataLen);
+        indexes[i] = Index(maxDataLen);
         for (var j = 0; j < maxDataLen; j++) {
             indexes[i].data[j] <== data[j];
-            indexes[i].index <== start + j;
         }
+        indexes[i].index <== start + i;
     }
 
     for (var i = 0; i < maxSubLen; i++) {
@@ -77,14 +74,7 @@ template Index(maxDataLen) {
  * Check the validity of fixed-schema encoded list. Note that we only do a *shallow* check. The caller 
  * needs to do RLPCheckFixedList() for the inner list items if present.
  */
-template RLPCheckFixedList(fieldLen, isListArray, fieldMaxLenArray, enforceInput) {
-    assert(fieldLen == isListArray.length);
-    assert(fieldLen == fieldMaxLenArray.length);
-    var maxLen = 0;
-    for (var i = 0; i < fieldLen; i++) {
-        maxLen += fieldMaxLenArray[i];
-    }
-
+template RLPCheckFixedList(maxLen, fieldNum, isListArray, enforceInput) {
     // input bytes.
     signal input data[maxLen];
     // start position of data to check in the input bytes.
@@ -92,30 +82,32 @@ template RLPCheckFixedList(fieldLen, isListArray, fieldMaxLenArray, enforceInput
     // is a valid RLP encoded list
     signal output valid;
     // offset of nth field in the data
-    signal output fieldStartArray[fieldLen];
+    signal output fieldStartArray[fieldNum];
     // length of nth field in the data
-    signal output fieldEndArray[fieldLen];
+    signal output fieldEndArray[fieldNum];
 
     component byteCheck;
     if (enforceInput == 1) {
         // Do a num2bits enforce on each input
         for (var i = 0; i < maxLen; i++) {
             byteCheck = Num2Bits(8);
-            byteCheck.in[i] <== data[i];
+            byteCheck.in <== data[i];
         }
     }
 
     component listPrefixCheck = RLPCheckListPrefix(maxLen);
-    for (var i = 0; i < fieldLen; i++) {
+    for (var i = 0; i < maxLen; i++) {
         listPrefixCheck.data[i] <== data[i];
     }
+    listPrefixCheck.start <== start;
     signal listEnd <== listPrefixCheck.prefixLen + listPrefixCheck.valueLen;
 
     var currentPosition = listPrefixCheck.prefixLen;
-    component prefixChecks[fieldLen];
-    for (var i = 0; i < fieldLen; i++) {
-        prefixChecks[i] = RLPCheckPrefix(maxLen);
-        for (var j = 0; j < fieldLen; j++) {
+    component prefixChecks[fieldNum];
+    for (var i = 0; i < fieldNum; i++) {
+        prefixChecks[i] = RLPCheckPrefixSelect(maxLen, isListArray[i]);
+
+        for (var j = 0; j < maxLen; j++) {
             prefixChecks[i].data[j] <== data[j];
         }
         prefixChecks[i].start <== currentPosition;
@@ -127,12 +119,12 @@ template RLPCheckFixedList(fieldLen, isListArray, fieldMaxLenArray, enforceInput
         currentPosition += prefixChecks[i].prefixLen + prefixChecks[i].valueLen;
     }
 
-    component validProduct[fieldLen];
+    signal validProduct[fieldNum];
     validProduct[0] <== listPrefixCheck.valid * prefixChecks[0].valid;
-    for (var i = 1; i < fieldLen; i++) {
+    for (var i = 1; i < fieldNum; i++) {
         validProduct[i] <== validProduct[i-1] * prefixChecks[i].valid;
     }
-    valid <== validProduct[fieldLen-1];
+    valid <== validProduct[fieldNum-1];
 }
 
 template RLPCheckPrefix(maxLen) {
@@ -165,6 +157,43 @@ template RLPCheckPrefix(maxLen) {
     valid <== checkListPrefix.valid + checkStringPrefix.valid;
     prefixLen <== prefixLenSwitcher.outR;
     valueLen <== valueLenSwitcher.outR;
+}
+
+template RLPCheckPrefixSelect(maxLen, isList) {
+    signal input data[maxLen];
+    signal input start;
+
+    signal output valid;
+    signal output prefixLen;
+    signal output valueLen;
+
+    component checkListPrefix;
+    component checkStringPrefix;
+    var validVar, prefixLenVar, valueLenVar;
+
+    if (isList) {
+        checkListPrefix = RLPCheckListPrefix(maxLen);
+        for (var i = 0; i < maxLen; i++) {
+            checkListPrefix.data[i] <== data[i];
+        }
+        checkListPrefix.start <== start;
+        validVar = checkListPrefix.valid;
+        prefixLenVar = checkListPrefix.prefixLen;
+        valueLenVar = checkListPrefix.valueLen;
+    } else {
+        checkStringPrefix = RLPCheckStringPrefix(maxLen);
+        for (var i = 0; i < maxLen; i++) {
+            checkStringPrefix.data[i] <== data[i];
+        }
+        checkStringPrefix.start <== start;
+        validVar = checkStringPrefix.valid;
+        prefixLenVar = checkStringPrefix.prefixLen;
+        valueLenVar = checkStringPrefix.valueLen;
+    }
+
+    valid <== validVar;
+    prefixLen <== prefixLenVar;
+    valueLen <== valueLenVar;
 }
 
 /*
