@@ -48,6 +48,84 @@ template SubArray(maxDataLen, maxSubLen) {
 }
 
 /*
+ * Get the sub-array of an array.
+*/
+template SubArray2(maxDataLen, maxSubLen) {
+    var indexBits = 0;
+    while ((1 << indexBits) <= maxDataLen) {
+        indexBits++;
+    }
+
+    signal input data[maxDataLen];
+    signal input start;
+    signal input end;
+    signal output out[maxSubLen];
+
+    component lt1 = LessEqThan(indexBits);
+    lt1.in[0] <== start;
+    lt1.in[1] <== end;
+    lt1.out === 1;
+
+    component lt2 = LessEqThan(indexBits);
+    lt2.in[0] <== end;
+    lt2.in[1] <== maxDataLen;
+    lt2.out === 1;
+
+    component lt3 = LessEqThan(indexBits);
+    lt3.in[0] <== end - start;
+    lt3.in[1] <== maxSubLen;
+    lt3.out === 1;
+
+    component shiftLeft = ShiftLeft(maxDataLen, 0, maxDataLen);
+    for (var i = 0; i < maxDataLen; i++) {
+        shiftLeft.in[i] <== data[i];
+    }
+    shiftLeft.shift <== start;
+    for (var i = 0; i < maxSubLen; i++) {
+        out[i] <== shiftLeft.out[i];
+    }
+}
+
+template ShiftLeft(nIn, minShift, maxShift) {
+    signal input in[nIn];
+    signal input shift;
+    signal output out[nIn];
+
+    var shiftBits = log_ceil(maxShift - minShift);
+
+    component n2b = Num2Bits(shiftBits);
+    signal shifts[shiftBits][nIn];
+    
+    if (minShift == maxShift) {
+        n2b.in <== 0;
+        for (var i = 0; i < nIn; i++) {
+	        out[i] <== in[(i + minShift) % nIn];
+	    }
+    } else {
+	    n2b.in <== shift - minShift;
+
+        for (var idx = 0; idx < shiftBits; idx++) {
+            if (idx == 0) {
+                for (var j = 0; j < nIn; j++) {
+                    var tempIdx = (j + minShift + (1 << idx)) % nIn;
+                    var tempIdx2 = (j + minShift) % nIn;
+                    shifts[0][j] <== n2b.out[idx] * (in[tempIdx] - in[tempIdx2]) + in[tempIdx2];
+                }
+            } else {
+                for (var j = 0; j < nIn; j++) {
+                    var prevIdx = idx - 1;
+                    var tempIdx = (j + (1 << idx)) % nIn;
+                    shifts[idx][j] <== n2b.out[idx] * (shifts[prevIdx][tempIdx] - shifts[prevIdx][j]) + shifts[prevIdx][j];
+                }
+            }
+        }
+        for (var i = 0; i < nIn; i++) {
+            out[i] <== shifts[shiftBits - 1][i];
+        }
+    }
+}
+
+/*
  * Get the nth element of an array. When index is out of range, the output is 0.
 */
 template Index(maxDataLen) {

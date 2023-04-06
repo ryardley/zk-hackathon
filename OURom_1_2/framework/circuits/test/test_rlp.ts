@@ -11,7 +11,7 @@ import { get_bsc_message_rlp, headers } from './bsc';
 
 
 describe("RLP decoding", function () {
-    this.timeout(600 * 1000);
+    this.timeout(60 * 1000);
 
     let circuit: any;
     before(async function () {
@@ -27,16 +27,15 @@ describe("RLP decoding", function () {
         let encoded = get_bsc_message_rlp(header, chainId);
         let pubAddress = header.coinbase;
 
-        let RLP_CIRCUIT_MAX_INPUT_LEN = 2150;
+        let RLP_CIRCUIT_MAX_INPUT_LEN = 1075;
         // encoded = smallRLP(header);
         // encoded header -> array of bigint
         let input = new Array(RLP_CIRCUIT_MAX_INPUT_LEN);
         for (let i = 0; i < encoded.length; i++) {
-            input[i * 2] = BigInt(encoded[i] >> 4);
-            input[i * 2 + 1] = BigInt(encoded[i] & 0xf);
+            input[i] = BigInt(encoded[i]);
         }
-        for (let i = encoded.length * 2; i < RLP_CIRCUIT_MAX_INPUT_LEN; i++) {
-            input[i] = BigInt(0);
+        for (let i = encoded.length; i < RLP_CIRCUIT_MAX_INPUT_LEN; i++) {
+            input[i] = 0n;
         }
 
         it('Testing bsc header, number ' + header.number, async function() {

@@ -56,13 +56,13 @@ template bytesToBigInt(n) {
 
     var temp = 0;
     for (var idx = 0; idx < n; idx++) {
-        temp = 16 * temp + shiftRight.out[idx];
+        temp = 256 * temp + shiftRight.out[idx];
     }
     out <== temp;
 }
 
 template TestRLPHeader() {
-    var maxLen = 2150;
+    var maxLen = 1075;
     // Input, RLP representation of the block.
     signal input data[maxLen]; // 2150 bytes of RLP encoding
     // Outputs.
@@ -73,7 +73,7 @@ template TestRLPHeader() {
     // RLP stuff
     component rlp = RLPCheckFixedList(maxLen,
         16,
-        [0, 0, 0, 0, 0, 0, 0, 0,  0,  0,  0,  0,  0,  0, 0, 0],
+        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
         0);
 
     for (var idx = 0; idx < maxLen; idx++) {
@@ -81,7 +81,7 @@ template TestRLPHeader() {
     }
     rlp.start <== 0;
 
-    component address = SubArray(maxLen, 40);
+    component address = SubArray2(maxLen, 20);
     for (var i = 0; i < maxLen; i++) {
         address.data[i] <== data[i];
     }
@@ -89,22 +89,22 @@ template TestRLPHeader() {
     address.end <== rlp.fieldEndArray[3];
     // account address
     var temp = 0;
-    for (var idx = 0; idx < 40; idx++) {
-        temp = 16 * temp + address.out[idx];
+    for (var idx = 0; idx < 20; idx++) {
+        temp = 256 * temp + address.out[idx];
     }
     coinbase <== temp;
     log("account address is:");
     log(coinbase);
 
     // chain ID
-    component chainIdSub = SubArray(maxLen, 64);
+    component chainIdSub = SubArray2(maxLen, 32);
     for (var i = 0; i < maxLen; i++) {
         chainIdSub.data[i] <== data[i];
     }
     chainIdSub.start <== rlp.fieldStartArray[0];
     chainIdSub.end <== rlp.fieldEndArray[0];
-    component b2b = bytesToBigInt(64);
-    for (var idx = 0; idx < 64; idx++) {
+    component b2b = bytesToBigInt(32);
+    for (var idx = 0; idx < 32; idx++) {
         b2b.in[idx] <== chainIdSub.out[idx];
     }
     b2b.inHexLen <== rlp.fieldEndArray[0] - rlp.fieldStartArray[0];
@@ -113,14 +113,14 @@ template TestRLPHeader() {
     log(chainId);
 
     // block number
-    component blockNumberSub = SubArray(maxLen, 64);
+    component blockNumberSub = SubArray2(maxLen, 32);
     for (var i = 0; i < maxLen; i++) {
         blockNumberSub.data[i] <== data[i];
     }
     blockNumberSub.start <== rlp.fieldStartArray[9];
     blockNumberSub.end <== rlp.fieldEndArray[9];
-    component b2bNumber = bytesToBigInt(64);
-    for (var idx = 0; idx < 64; idx++) {
+    component b2bNumber = bytesToBigInt(32);
+    for (var idx = 0; idx < 32; idx++) {
         b2bNumber.in[idx] <== blockNumberSub.out[idx];
     }
     b2bNumber.inHexLen <== rlp.fieldEndArray[9] - rlp.fieldStartArray[9];
