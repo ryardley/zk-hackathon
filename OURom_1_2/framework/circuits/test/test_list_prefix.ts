@@ -1,10 +1,8 @@
+// @ts-ignore
 import path from "path";
-
-import { expect, assert } from 'chai';
+import RLP from 'rlp';
 const circom_tester = require('circom_tester');
 const wasm_tester = circom_tester.wasm;
-import RLP from 'rlp';
-
 
 describe("RLP decoding", function () {
     this.timeout(60 * 1000);
@@ -17,35 +15,39 @@ describe("RLP decoding", function () {
         console.log("constraints: " + circuit.constraints.length);
     });
 
-    it("empty list", async () => {
-        const encoded = RLP.encode([]);
-        const input = new Array(10000);
+    async function testPrefix(len: number, expectedValueLen: number, expectedPrefixLen: number) {
+        const data = [];
+        for (let i = 0; i < len; i++) {
+            data.push(42);
+        }
+        const encoded = RLP.encode(data);
+        const input = new Array(100000);
         for (let i = 0; i < encoded.length; i ++) {
             input[i] = BigInt(encoded[i]);
         }
-        for (let i = encoded.length; i < 10000; i++) {
+        for (let i = encoded.length; i < 100000; i++) {
             input[i] = BigInt(0);
         }
         const witness = await circuit.calculateWitness({ data: input });
         await circuit.checkConstraints(witness);
-        await circuit.assertOut(witness, { valueLen: 0, prefixLen: 1 });
-    });
+        await circuit.assertOut(witness, { valueLen: expectedValueLen, prefixLen: expectedPrefixLen });
+    }
 
-    it("empty list", async () => {
-        const target = [];
-        for (let i = 0; i < 7777; i++) {
-            target.push("x");
-        }
-        const encoded = RLP.encode(target);
-        const input = new Array(10000);
-        for (let i = 0; i < encoded.length; i ++) {
-            input[i] = BigInt(encoded[i]);
-        }
-        for (let i = encoded.length; i < 10000; i++) {
-            input[i] = BigInt(0);
-        }
-        const witness = await circuit.calculateWitness({ data: input });
-        await circuit.checkConstraints(witness);
-        await circuit.assertOut(witness, { valueLen: target.length, prefixLen: 3 });
-    });
+    const testData: [string, number, number, number][] = [
+        ["empty string", 0, 0, 1],
+        ["single byte", 1, 1, 1],
+        ["length 55", 55, 55, 1],
+        ["length 56", 56, 56, 2],
+        ["length 255", 255, 255, 2],
+        ["length 256", 256, 256, 3],
+        ["length 65535", 65535, 65535, 3],
+        ["length 65536", 65536, 65536, 4],
+        // heap limit reached
+        // ["length 16777215", 16777215, 16777215, 4],
+    ];
+
+    for (let i = 0; i < testData.length; i++) {
+        const testCase = testData[i];
+        it(testCase[0],  async () => await testPrefix(testCase[1], testCase[2], testCase[3]));
+    }
 });
