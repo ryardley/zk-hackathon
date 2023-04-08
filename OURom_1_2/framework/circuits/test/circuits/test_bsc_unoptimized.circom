@@ -71,59 +71,43 @@ template TestRLPHeader() {
     signal output blockNumber;
 
     // RLP stuff
-    component rlp = RLPCheckFixedList(maxLen,
+    component rlp = RLPDecodeFixedList(
+        maxLen,
         16,
         [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        [0,  32, 32, 20, 32, 32, 32, 256,  0,  0,  0,  0,  0,  32, 32, 8],
+        [32, 32, 32, 20, 32, 32, 32, 256, 32, 32,  8,  8,  8, 452, 32, 8],
         0);
 
     for (var idx = 0; idx < maxLen; idx++) {
     	rlp.data[idx] <== data[idx];
     }
-    rlp.start <== 0;
 
-    component address = SubArray2(maxLen, 20);
-    for (var i = 0; i < maxLen; i++) {
-        address.data[i] <== data[i];
-    }
-    address.start <== rlp.fieldStartArray[3];
-    address.end <== rlp.fieldEndArray[3];
     // account address
     var temp = 0;
     for (var idx = 0; idx < 20; idx++) {
-        temp = 256 * temp + address.out[idx];
+        temp = 256 * temp + rlp.fields[3][idx];
     }
     coinbase <== temp;
     log("account address is:");
     log(coinbase);
 
     // chain ID
-    component chainIdSub = SubArray2(maxLen, 32);
-    for (var i = 0; i < maxLen; i++) {
-        chainIdSub.data[i] <== data[i];
-    }
-    chainIdSub.start <== rlp.fieldStartArray[0];
-    chainIdSub.end <== rlp.fieldEndArray[0];
     component b2b = bytesToBigInt(32);
     for (var idx = 0; idx < 32; idx++) {
-        b2b.in[idx] <== chainIdSub.out[idx];
+        b2b.in[idx] <== rlp.fields[0][idx];
     }
-    b2b.inHexLen <== rlp.fieldEndArray[0] - rlp.fieldStartArray[0];
+    b2b.inHexLen <== rlp.fieldLens[0];
     chainId <== b2b.out;
     log("chain ID is:");
     log(chainId);
 
     // block number
-    component blockNumberSub = SubArray2(maxLen, 32);
-    for (var i = 0; i < maxLen; i++) {
-        blockNumberSub.data[i] <== data[i];
-    }
-    blockNumberSub.start <== rlp.fieldStartArray[9];
-    blockNumberSub.end <== rlp.fieldEndArray[9];
     component b2bNumber = bytesToBigInt(32);
     for (var idx = 0; idx < 32; idx++) {
-        b2bNumber.in[idx] <== blockNumberSub.out[idx];
+        b2bNumber.in[idx] <== rlp.fields[9][idx];
     }
-    b2bNumber.inHexLen <== rlp.fieldEndArray[9] - rlp.fieldStartArray[9];
+    b2bNumber.inHexLen <== rlp.fieldLens[9];
     blockNumber <== b2bNumber.out;
     log("block number is:");
     log(blockNumber);

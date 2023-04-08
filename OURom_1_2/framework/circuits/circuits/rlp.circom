@@ -26,6 +26,7 @@ template ShiftLeft(nIn, minShift, maxShift) {
     signal shifts[shiftBits][nIn];
     
     if (minShift == maxShift) {
+        assert(shift == minShift);
         for (var i = 0; i < nIn; i++) {
 	        out[i] <== data[(i + minShift) % nIn];
 	    }
@@ -65,6 +66,15 @@ template ShiftLeft(nIn, minShift, maxShift) {
  * `enforceInput`: whether to enforce the input data to be 8-bit bytes.
  */
 template RLPDecodeFixedList(maxLen, fieldNum, isListArray, fieldMinArray, fieldMaxArray, enforceInput) {
+    var computedTotalMinLen = 0;
+    var computedTotalMaxLen = 0;
+    for (var i = 0; i < fieldNum; i++) {
+        // TODO: we can actaully calculate prefixLen based on the field max length and get a slightly smaller totalMaxLen
+        computedTotalMinLen += fieldMinArray[i];
+        computedTotalMaxLen += fieldMaxArray[i] + 4;
+    }
+    // assert(maxLen >= computedTotalMaxLen);
+
     // input bytes.
     signal input data[maxLen];
     // is a valid RLP encoded list
@@ -73,14 +83,6 @@ template RLPDecodeFixedList(maxLen, fieldNum, isListArray, fieldMinArray, fieldM
     signal output fields[fieldNum][maxLen];
     // field lengths
     signal output fieldLens[fieldNum];
-
-    var computedTotalMinLen = 0;
-    var computedTotalMaxLen = 0;
-    for (var i = 0; i < fieldNum; i++) {
-        // TODO: we can actaully calculate prefixLen based on the field max length and get a slightly smaller totalMaxLen
-        computedTotalMinLen += fieldMinArray[i];
-        computedTotalMaxLen += fieldMaxArray[i] + 4;
-    }
 
     component byteCheck;
     if (enforceInput == 1) {
@@ -91,32 +93,45 @@ template RLPDecodeFixedList(maxLen, fieldNum, isListArray, fieldMinArray, fieldM
         }
     }
 
-    component decodeList = RLPDecodeList(maxLen, computedTotalMinLen, computedTotalMaxLen);
+    component decodeList = RLPDecodeList(maxLen, computedTotalMinLen, maxLen);
     for (var i = 0; i < maxLen; i++) {
         decodeList.data[i] <== data[i];
     }
+    log("list prefix is: ", decodeList.prefixLen);
     component shiftListPrefix = ShiftLeft(maxLen, 0, 4);
     for (var i = 0; i < maxLen; i++) {
         shiftListPrefix.data[i] <== data[i];
-        shiftListPrefix.shift <== decodeList.prefixLen;
     }
+    shiftListPrefix.shift <== decodeList.prefixLen;
 
-    var currentData = shiftListPrefix.out;
+    var currentData[maxLen];
+    for (var i = 0; i < maxLen; i++) {
+        currentData[i] = shiftListPrefix.out[i];
+    }
+    var currentPosition = decodeList.prefixLen;
     component decodeField[fieldNum];
     for (var i = 0; i < fieldNum; i++) {
-        decodeField[i] = RLPDecodeSelect(maxLen, isListArray[i], fieldMinArray[i], fieldMaxArray[i]);
-
+        decodeField[i] = RLPDecodeSelect(maxLen, fieldMinArray[i], fieldMaxArray[i], isListArray[i]);
         for (var j = 0; j < maxLen; j++) {
-            decodeField[i].data[j] <== data[j];
+            decodeField[i].data[j] <== currentData[j];
         }
-        currentData = decodeField.shifted;
+        log("current position is: ", currentPosition, ", first byte should be ", data[currentPosition]);
+        log("currentData[0] is: ", currentData[0]);
+        log("filed[", i, "] prefix length is: ", decodeField[i].prefixLen);
+        log("filed[", i, "] value length is: ", decodeField[i].valueLen);
+        currentPosition += decodeField[i].prefixLen + decodeField[i].valueLen;
+
         for (var j = 0; j < fieldMaxArray[i]; j++) {
-            fields[i][j] <== decodeField.out[j];
+            fields[i][j] <== decodeField[i].out[j];
         }
         for (var j = fieldMaxArray[i]; j < maxLen; j++) {
             fields[i][j] <== 0;
         }
-        fieldLens[i] <== decodeField.valueLen;
+        fieldLens[i] <== decodeField[i].valueLen;
+
+        for (var j = 0; j < maxLen;j ++) {
+            currentData[j] = decodeField[i].shiftedData[j];
+        }
     }
 
     signal validProduct[fieldNum];
@@ -340,7 +355,7 @@ template RLPDecodeString(dataMaxLen, stringMinLen, stringMaxLen) {
     // the RLP encoding. Any prefix with any value after it will only have one decoding theme.
     validVar += valid0;
     prefixLenVar += 1 * valid0;
-    valueLenVar = valueLen0 * valid0;
+    valueLenVar = finalValueLen0;
     // One additional prefix byte
     if (stringMaxLen > 55) {
         byte1 <== data[1];
@@ -408,7 +423,7 @@ template RLPDecodeString(dataMaxLen, stringMinLen, stringMaxLen) {
     }
     component valueShifted = ShiftLeft(dataMaxLen, stringMinLen, stringMaxLen);
     for (var i = 0; i < dataMaxLen; i++) {
-        valueShifted.data[i] <== data[i];
+        valueShifted.data[i] <== prefixShifted.out[i];
     }
     valueShifted.shift <== valueLenVar;
 
