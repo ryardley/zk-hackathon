@@ -4,104 +4,33 @@ include "../../node_modules/circomlib/circuits/bitify.circom";
 include "../../node_modules/circomlib/circuits/comparators.circom";
 include "../../node_modules/circomlib/circuits/switcher.circom";
 
-/*
- * Get the sub-array of an array.
-*/
-template SubArray(maxDataLen, maxSubLen) {
-    var indexBits = 0;
-    while ((1 << indexBits) <= maxDataLen) {
-        indexBits++;
-    }
-
-    signal input data[maxDataLen];
-    signal input start;
-    signal input end;
-    signal output out[maxSubLen];
-
-    component lt1 = LessEqThan(indexBits);
-    lt1.in[0] <== start;
-    lt1.in[1] <== end;
-    lt1.out === 1;
-
-    component lt2 = LessEqThan(indexBits);
-    lt2.in[0] <== end;
-    lt2.in[1] <== maxDataLen;
-    lt2.out === 1;
-
-    component lt3 = LessEqThan(indexBits);
-    lt3.in[0] <== end - start;
-    lt3.in[1] <== maxSubLen;
-    lt3.out === 1;
-
-    component indexes[maxSubLen];
-    for (var i = 0; i < maxSubLen; i++) {
-        indexes[i] = Index(maxDataLen);
-        for (var j = 0; j < maxDataLen; j++) {
-            indexes[i].data[j] <== data[j];
-        }
-        indexes[i].index <== start + i;
-    }
-
-    for (var i = 0; i < maxSubLen; i++) {
-        out[i] <== indexes[i].out;
-    }
-}
-
-/*
- * Get the sub-array of an array.
-*/
-template SubArray2(maxDataLen, maxSubLen) {
-    var indexBits = 0;
-    while ((1 << indexBits) <= maxDataLen) {
-        indexBits++;
-    }
-
-    signal input data[maxDataLen];
-    signal input start;
-    signal input end;
-    signal output out[maxSubLen];
-
-    component lt1 = LessEqThan(indexBits);
-    lt1.in[0] <== start;
-    lt1.in[1] <== end;
-    lt1.out === 1;
-
-    component lt2 = LessEqThan(indexBits);
-    lt2.in[0] <== end;
-    lt2.in[1] <== maxDataLen;
-    lt2.out === 1;
-
-    component lt3 = LessEqThan(indexBits);
-    lt3.in[0] <== end - start;
-    lt3.in[1] <== maxSubLen;
-    lt3.out === 1;
-
-    component shiftLeft = ShiftLeft(maxDataLen, 0, maxDataLen);
-    for (var i = 0; i < maxDataLen; i++) {
-        shiftLeft.in[i] <== data[i];
-    }
-    shiftLeft.shift <== start;
-    for (var i = 0; i < maxSubLen; i++) {
-        out[i] <== shiftLeft.out[i];
-    }
+function num_bits(n) {
+    var n_temp = n;
+    for (var i = 0; i < 256; i++) {
+       if (n_temp == 0) {
+          return i;
+       }
+       n_temp = n_temp \ 2;
+   }
+   return 255;
 }
 
 template ShiftLeft(nIn, minShift, maxShift) {
-    signal input in[nIn];
+    signal input data[nIn];
     signal input shift;
     signal output out[nIn];
 
-    var shiftBits = log_ceil(maxShift - minShift);
+    var shiftBits = num_bits(maxShift - minShift);
 
-    component n2b = Num2Bits(shiftBits);
+    component n2b;
     signal shifts[shiftBits][nIn];
     
     if (minShift == maxShift) {
-        n2b.in <== 0;
         for (var i = 0; i < nIn; i++) {
-	        out[i] <== in[(i + minShift) % nIn];
+	        out[i] <== data[(i + minShift) % nIn];
 	    }
     } else {
+        n2b = Num2Bits(shiftBits);
 	    n2b.in <== shift - minShift;
 
         for (var idx = 0; idx < shiftBits; idx++) {
@@ -109,7 +38,7 @@ template ShiftLeft(nIn, minShift, maxShift) {
                 for (var j = 0; j < nIn; j++) {
                     var tempIdx = (j + minShift + (1 << idx)) % nIn;
                     var tempIdx2 = (j + minShift) % nIn;
-                    shifts[0][j] <== n2b.out[idx] * (in[tempIdx] - in[tempIdx2]) + in[tempIdx2];
+                    shifts[0][j] <== n2b.out[idx] * (data[tempIdx] - data[tempIdx2]) + data[tempIdx2];
                 }
             } else {
                 for (var j = 0; j < nIn; j++) {
@@ -126,43 +55,32 @@ template ShiftLeft(nIn, minShift, maxShift) {
 }
 
 /*
- * Get the nth element of an array. When index is out of range, the output is 0.
-*/
-template Index(maxDataLen) {
-    signal input data[maxDataLen];
-    signal input index;
-    signal output out;
-
-    component select[maxDataLen];
-    for (var i = 0; i < maxDataLen; i++) {
-        select[i] = IsEqual();
-        select[i].in[0] <== i;
-        select[i].in[1] <== index;
-    }
-
-    signal sum[maxDataLen];
-    sum[0] <== select[0].out * data[0];
-    for (var i = 1; i < maxDataLen; i++) {
-        sum[i] <== select[i].out * data[i] + sum[i-1];
-    }
-    out <== sum[maxDataLen-1];
-}
-
-/*
  * Check the validity of fixed-schema encoded list. Note that we only do a *shallow* check. The caller 
  * needs to do RLPCheckFixedList() for the inner list items if present.
+ * `maxLen`: the maximum length of the input data.
+ * `fieldNum`: the number of fields in the list.
+ * `isListArray`: an array of length `fieldNum` indicating whether the field is a list.
+ * `fieldMinArray`: an array of length `fieldNum` indicating the minimum length of the field.
+ * `fieldMaxArray`: an array of length `fieldNum` indicating the maximum length of the field.
+ * `enforceInput`: whether to enforce the input data to be 8-bit bytes.
  */
-template RLPCheckFixedList(maxLen, fieldNum, isListArray, enforceInput) {
+template RLPDecodeFixedList(maxLen, fieldNum, isListArray, fieldMinArray, fieldMaxArray, enforceInput) {
     // input bytes.
     signal input data[maxLen];
-    // start position of data to check in the input bytes.
-    signal input start;
     // is a valid RLP encoded list
     signal output valid;
-    // offset of nth field in the data
-    signal output fieldStartArray[fieldNum];
-    // length of nth field in the data
-    signal output fieldEndArray[fieldNum];
+    // fields values
+    signal output fields[fieldNum][maxLen];
+    // field lengths
+    signal output fieldLens[fieldNum];
+
+    var computedTotalMinLen = 0;
+    var computedTotalMaxLen = 0;
+    for (var i = 0; i < fieldNum; i++) {
+        // TODO: we can actaully calculate prefixLen based on the field max length and get a slightly smaller totalMaxLen
+        computedTotalMinLen += fieldMinArray[i];
+        computedTotalMaxLen += fieldMaxArray[i] + 4;
+    }
 
     component byteCheck;
     if (enforceInput == 1) {
@@ -173,122 +91,96 @@ template RLPCheckFixedList(maxLen, fieldNum, isListArray, enforceInput) {
         }
     }
 
-    component listPrefixCheck = RLPCheckListPrefix(maxLen);
+    component decodeList = RLPDecodeList(maxLen, computedTotalMinLen, computedTotalMaxLen);
     for (var i = 0; i < maxLen; i++) {
-        listPrefixCheck.data[i] <== data[i];
+        decodeList.data[i] <== data[i];
     }
-    listPrefixCheck.start <== start;
-    signal listEnd <== listPrefixCheck.prefixLen + listPrefixCheck.valueLen;
+    component shiftListPrefix = ShiftLeft(maxLen, 0, 4);
+    for (var i = 0; i < maxLen; i++) {
+        shiftListPrefix.data[i] <== data[i];
+        shiftListPrefix.shift <== decodeList.prefixLen;
+    }
 
-    var currentPosition = listPrefixCheck.prefixLen;
-    component prefixChecks[fieldNum];
+    var currentData = shiftListPrefix.out;
+    component decodeField[fieldNum];
     for (var i = 0; i < fieldNum; i++) {
-        prefixChecks[i] = RLPCheckPrefixSelect(maxLen, isListArray[i]);
+        decodeField[i] = RLPDecodeSelect(maxLen, isListArray[i], fieldMinArray[i], fieldMaxArray[i]);
 
         for (var j = 0; j < maxLen; j++) {
-            prefixChecks[i].data[j] <== data[j];
+            decodeField[i].data[j] <== data[j];
         }
-        prefixChecks[i].start <== currentPosition;
-        fieldStartArray[i] <== currentPosition + prefixChecks[i].prefixLen;
-        fieldEndArray[i] <== currentPosition + prefixChecks[i].prefixLen + prefixChecks[i].valueLen;
-        // Do we need to check that all fieldStart and fieldEnd are valid and in range?
-        // Theoretically someone could make a prefix that has size larger than or close to the
-        // base field, but prefix to be outputed has a hard limit 16777216, so it should be fine.
-        currentPosition += prefixChecks[i].prefixLen + prefixChecks[i].valueLen;
+        currentData = decodeField.shifted;
+        for (var j = 0; j < fieldMaxArray[i]; j++) {
+            fields[i][j] <== decodeField.out[j];
+        }
+        for (var j = fieldMaxArray[i]; j < maxLen; j++) {
+            fields[i][j] <== 0;
+        }
+        fieldLens[i] <== decodeField.valueLen;
     }
 
     signal validProduct[fieldNum];
-    validProduct[0] <== listPrefixCheck.valid * prefixChecks[0].valid;
+    validProduct[0] <== decodeList.valid * decodeField[0].valid;
     for (var i = 1; i < fieldNum; i++) {
-        validProduct[i] <== validProduct[i-1] * prefixChecks[i].valid;
+        validProduct[i] <== validProduct[i-1] * decodeField[i].valid;
     }
     valid <== validProduct[fieldNum-1];
 }
 
-template RLPCheckPrefix(maxLen) {
-    signal input data[maxLen];
-    signal input start;
+template RLPDecodeSelect(dataMaxLen, valueMinLen, valueMaxLen, isList) {
+    signal input data[dataMaxLen];
 
     signal output valid;
     signal output prefixLen;
     signal output valueLen;
+    signal output out[valueMaxLen]; // list value
+    signal output shiftedData[dataMaxLen]; // `data` shifted to the end of encoded string
 
-    component checkListPrefix = RLPCheckListPrefix(maxLen);
-    component checkStringPrefix = RLPCheckStringPrefix(maxLen);
-    for (var i = 0; i < maxLen; i++) {
-        checkListPrefix.data[i] <== data[i];
-        checkStringPrefix.data[i] <== data[i];
-    }
-    checkListPrefix.start <== start;
-    checkStringPrefix.start <== start;
-
-    component prefixLenSwitcher = Switcher();
-    prefixLenSwitcher.sel <== checkListPrefix.valid;
-    prefixLenSwitcher.L <== checkStringPrefix.prefixLen;
-    prefixLenSwitcher.R <== checkListPrefix.prefixLen;
-
-    component valueLenSwitcher = Switcher();
-    valueLenSwitcher.sel <== checkListPrefix.valid;
-    valueLenSwitcher.L <== checkStringPrefix.valueLen;
-    valueLenSwitcher.R <== checkListPrefix.valueLen;
-
-    valid <== checkListPrefix.valid + checkStringPrefix.valid;
-    prefixLen <== prefixLenSwitcher.outR;
-    valueLen <== valueLenSwitcher.outR;
-}
-
-template RLPCheckPrefixSelect(maxLen, isList) {
-    signal input data[maxLen];
-    signal input start;
-
-    signal output valid;
-    signal output prefixLen;
-    signal output valueLen;
-
-    component checkListPrefix;
-    component checkStringPrefix;
+    component decodeList;
+    component decodeString;
     var validVar, prefixLenVar, valueLenVar;
 
     if (isList) {
-        checkListPrefix = RLPCheckListPrefix(maxLen);
-        for (var i = 0; i < maxLen; i++) {
-            checkListPrefix.data[i] <== data[i];
+        decodeList = RLPDecodeList(dataMaxLen, valueMinLen, valueMaxLen);
+        for (var i = 0; i < dataMaxLen; i++) {
+            decodeList.data[i] <== data[i];
         }
-        checkListPrefix.start <== start;
-        validVar = checkListPrefix.valid;
-        prefixLenVar = checkListPrefix.prefixLen;
-        valueLenVar = checkListPrefix.valueLen;
+        for (var i = 0; i < valueMaxLen; i++) {
+            out[i] <== decodeList.out[i];
+        }
+        for (var i = 0; i< dataMaxLen; i++) {
+            shiftedData[i] <== decodeList.shiftedData[i];
+        }
+        valid <== decodeList.valid;
+        prefixLen <== decodeList.prefixLen;
+        valueLen <== decodeList.valueLen;
     } else {
-        checkStringPrefix = RLPCheckStringPrefix(maxLen);
-        for (var i = 0; i < maxLen; i++) {
-            checkStringPrefix.data[i] <== data[i];
+        decodeString = RLPDecodeString(dataMaxLen, valueMinLen, valueMaxLen);
+        for (var i = 0; i < dataMaxLen; i++) {
+            decodeString.data[i] <== data[i];
         }
-        checkStringPrefix.start <== start;
-        validVar = checkStringPrefix.valid;
-        prefixLenVar = checkStringPrefix.prefixLen;
-        valueLenVar = checkStringPrefix.valueLen;
+        for (var i = 0; i < valueMaxLen; i++) {
+            out[i] <== decodeString.out[i];
+        }
+        for (var i = 0; i< dataMaxLen; i++) {
+            shiftedData[i] <== decodeString.shiftedData[i];
+        }
+        valid <== decodeString.valid;
+        prefixLen <== decodeString.prefixLen;
+        valueLen <== decodeString.valueLen;
     }
 
-    valid <== validVar;
-    prefixLen <== prefixLenVar;
-    valueLen <== valueLenVar;
 }
 
-/*
- * Check the validity of a variable-size list that does not contain other lists.
- */
-template RLPCheckSimpleList(maxFieldNum, fieldMaxLen, enforceInput) {
-    // TODO
-}
-
-template RLPCheckListPrefix(maxLen) {
-    assert(maxLen < 16777216);
-    signal input data[maxLen];
-    signal input start;
+template RLPDecodeList(dataMaxLen, listMinLen, listMaxLen) {
+    assert(dataMaxLen < 16777216);
+    signal input data[dataMaxLen];
 
     signal output valid;
     signal output prefixLen;
     signal output valueLen;
+    signal output out[listMaxLen]; // list value
+    signal output shiftedData[dataMaxLen]; // `data` shifted to the end of encoded string
 
     var validVar = 0;
     var prefixLenVar = 0;
@@ -302,13 +194,7 @@ template RLPCheckListPrefix(maxLen) {
     component checkFirstByte1, checkFirstByte2, checkFirstByte3;
     component inRange1, inRange2, inRange3;
 
-    index0 = Index(maxLen);
-    // One prefix byte
-    for (var i = 0; i < maxLen; i++) {
-        index0.data[i] <== data[i];
-    }
-    index0.index <== start;
-    byte0 <== index0.out;
+    byte0 <== data[0];
 
     component lowerBound = LessThan(8);
     lowerBound.in[0] <== 191;
@@ -326,13 +212,8 @@ template RLPCheckListPrefix(maxLen) {
     prefixLenVar += 1 * valid0;
     valueLenVar = valueLen0 * valid0;
     // One additional prefix byte
-    if (maxLen > 55) {
-        index1 = Index(maxLen);
-        for (var i = 0; i < maxLen; i++) {
-            index1.data[i] <== data[i];
-        }
-        index1.index <== start + 1;
-        byte1 <== index1.out;
+    if (listMaxLen > 55) {
+        byte1 <== data[1];
         valueLen1 <== byte1;
 
         checkFirstByte1 = IsEqual();
@@ -350,13 +231,8 @@ template RLPCheckListPrefix(maxLen) {
     }
 
     // Two additional prefix bytes
-    if (maxLen >= 256) {
-        index2 = Index(maxLen);
-        for (var i = 0; i < maxLen; i++) {
-            index2.data[i] <== data[i];
-        }
-        index2.index <== start + 2;
-        byte2 <== index2.out;
+    if (listMaxLen >= 256) {
+        byte2 <== data[2];
         valueLen2 <== byte2 + byte1 * (1 << 8);
 
         checkFirstByte2 = IsEqual();
@@ -374,13 +250,8 @@ template RLPCheckListPrefix(maxLen) {
     }
 
     // Three additional prefix bytes
-    if (maxLen >= 65536) {
-        index3 = Index(maxLen);
-        for (var i = 0; i < maxLen; i++) {
-            index3.data[i] <== data[i];
-        }
-        index3.index <== start + 3;
-        byte3 <== index3.out;
+    if (listMaxLen >= 65536) {
+        byte3 <== data[3];
         valueLen3 <== byte3 + byte2 * (1 << 8) + byte1 * (1 << 16);
 
         checkFirstByte3 = IsEqual();
@@ -397,7 +268,23 @@ template RLPCheckListPrefix(maxLen) {
         valueLenVar = finalValueLen3;
     }
     // We could add more here, but that's probably enough for now
+    component prefixShifted = ShiftLeft(dataMaxLen, 0, 4);
+    for (var i = 0; i < dataMaxLen; i++) {
+        prefixShifted.data[i] <== data[i];
+    }
+    prefixShifted.shift <== prefixLenVar;
+    for (var i = 0; i < listMaxLen; i++) {
+        out[i] <== prefixShifted.out[i];
+    }
+    component valueShifted = ShiftLeft(dataMaxLen, listMinLen, listMaxLen);
+    for (var i = 0; i < dataMaxLen; i++) {
+        valueShifted.data[i] <== data[i];
+    }
+    valueShifted.shift <== valueLenVar;
 
+    for (var i = 0; i < dataMaxLen; i++) {
+        shiftedData[i] <== valueShifted.out[i];
+    }
     valid <== validVar;
     prefixLen <== prefixLenVar;
     valueLen <== valueLenVar;
@@ -405,15 +292,17 @@ template RLPCheckListPrefix(maxLen) {
 
 /*
  * Checks the validity of an encoded string prefix.
+ * `data` should contain the original data left-shifted to the start of encoded string.
  */
-template RLPCheckStringPrefix(maxLen) {
-    assert(maxLen < 16777216);
-    signal input data[maxLen];
-    signal input start;
+template RLPDecodeString(dataMaxLen, stringMinLen, stringMaxLen) {
+    assert(stringMaxLen < 16777216);
+    signal input data[dataMaxLen];
 
     signal output valid;
     signal output prefixLen;
     signal output valueLen;
+    signal output out[stringMaxLen]; // string value
+    signal output shiftedData[dataMaxLen]; // `data` shifted to the end of encoded string
 
     var validVar = 0;
     var prefixLenVar = 0;
@@ -427,13 +316,7 @@ template RLPCheckStringPrefix(maxLen) {
     component checkFirstByte1, checkFirstByte2, checkFirstByte3;
     component inRange1, inRange2, inRange3;
 
-    index0 = Index(maxLen);
-    // One prefix byte
-    for (var i = 0; i < maxLen; i++) {
-        index0.data[i] <== data[i];
-    }
-    index0.index <== start;
-    byte0 <== index0.out;
+    byte0 <== data[0];
 
     component singleByteUpperBound = LessThan(8);
     singleByteUpperBound.in[0] <== byte0;
@@ -459,13 +342,8 @@ template RLPCheckStringPrefix(maxLen) {
     prefixLenVar += 1 * valid0;
     valueLenVar = valueLen0 * valid0;
     // One additional prefix byte
-    if (maxLen > 55) {
-        index1 = Index(maxLen);
-        for (var i = 0; i < maxLen; i++) {
-            index1.data[i] <== data[i];
-        }
-        index1.index <== start + 1;
-        byte1 <== index1.out;
+    if (stringMaxLen > 55) {
+        byte1 <== data[1];
         valueLen1 <== byte1;
 
         checkFirstByte1 = IsEqual();
@@ -483,13 +361,8 @@ template RLPCheckStringPrefix(maxLen) {
     }
 
     // Two additional prefix bytes
-    if (maxLen >= 256) {
-        index2 = Index(maxLen);
-        for (var i = 0; i < maxLen; i++) {
-            index2.data[i] <== data[i];
-        }
-        index2.index <== start + 2;
-        byte2 <== index2.out;
+    if (stringMaxLen >= 256) {
+        byte2 <== data[2];
         valueLen2 <== byte2 + byte1 * (1 << 8);
 
         checkFirstByte2 = IsEqual();
@@ -507,13 +380,8 @@ template RLPCheckStringPrefix(maxLen) {
     }
 
     // Three additional prefix bytes
-    if (maxLen >= 65536) {
-        index3 = Index(maxLen);
-        for (var i = 0; i < maxLen; i++) {
-            index3.data[i] <== data[i];
-        }
-        index3.index <== start + 3;
-        byte3 <== index3.out;
+    if (stringMaxLen >= 65536) {
+        byte3 <== data[3];
         valueLen3 <== byte3 + byte2 * (1 << 8) + byte1 * (1 << 16);
 
         checkFirstByte3 = IsEqual();
@@ -530,7 +398,23 @@ template RLPCheckStringPrefix(maxLen) {
         valueLenVar = finalValueLen3;
     }
     // We could add more here, but that's probably enough for now
+    component prefixShifted = ShiftLeft(dataMaxLen, 0, 4);
+    for (var i = 0; i < dataMaxLen; i++) {
+        prefixShifted.data[i] <== data[i];
+    }
+    prefixShifted.shift <== prefixLenVar;
+    for (var i = 0; i < stringMaxLen; i++) {
+        out[i] <== prefixShifted.out[i];
+    }
+    component valueShifted = ShiftLeft(dataMaxLen, stringMinLen, stringMaxLen);
+    for (var i = 0; i < dataMaxLen; i++) {
+        valueShifted.data[i] <== data[i];
+    }
+    valueShifted.shift <== valueLenVar;
 
+    for (var i = 0; i < dataMaxLen; i++) {
+        shiftedData[i] <== valueShifted.out[i];
+    }
     valid <== validVar;
     prefixLen <== prefixLenVar;
     valueLen <== valueLenVar;

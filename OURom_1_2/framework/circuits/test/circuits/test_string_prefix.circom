@@ -9,11 +9,10 @@ template TestRLPListPrefix() {
     signal output prefixLen;
     signal output valueLen;
 
-    component rlpHeader = RLPCheckStringPrefix(maxLen);
+    component rlpHeader = RLPDecodeString(maxLen, 0, maxLen);
     for (var i = 0; i < maxLen; i++) {
         rlpHeader.data[i] <== data[i];
     }
-    rlpHeader.start <== 0;
     prefixLen <== rlpHeader.prefixLen;
     valueLen <== rlpHeader.valueLen;
 }

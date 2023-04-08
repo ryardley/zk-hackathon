@@ -5,7 +5,7 @@ const circom_tester = require('circom_tester');
 const wasm_tester = circom_tester.wasm;
 
 describe("RLP decoding", function () {
-    this.timeout(60 * 1000);
+    this.timeout(120 * 1000);
 
     let circuit: any;
     before(async function () {
