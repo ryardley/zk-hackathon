@@ -70,11 +70,10 @@ template RLPDecodeFixedList(maxLen, fieldNum, isListArray, getFieldArray, fieldM
     var computedTotalMinLen = 0;
     var computedTotalMaxLen = 0;
     for (var i = 0; i < fieldNum; i++) {
-        // TODO: we can actaully calculate prefixLen based on the field max length and get a slightly smaller totalMaxLen
-        computedTotalMinLen += fieldMinArray[i];
-        computedTotalMaxLen += fieldMaxArray[i] + 4;
+        computedTotalMinLen += fieldMinArray[i] + isListArray[i];
+        computedTotalMaxLen += fieldMaxArray[i] + maxBytesForLength(fieldMaxArray[i]);
     }
-    // assert(maxLen >= computedTotalMaxLen);
+    assert(maxLen >= computedTotalMaxLen);
 
     // input bytes.
     signal input data[maxLen];
@@ -188,8 +187,24 @@ template RLPDecodeSelect(dataMaxLen, valueMinLen, valueMaxLen, isList, getField)
 
 }
 
+function maxBytesForLength(len) {
+    if (len < 55) {
+        return 1;
+    } else if (len < 256) {
+        return 2;
+    } else if (len < 65536) {
+        return 3;
+    } else if (len < 16777216) {
+        return 4;
+    } else {
+        return -1;
+    }
+}
+
 template RLPDecodeList(dataMaxLen, listMinLen, listMaxLen, getField) {
     assert(dataMaxLen < 16777216);
+    var maxPrefixLength = maxBytesForLength(listMaxLen);
+    var minPrefixLength = 1;
     signal input data[dataMaxLen];
 
     signal output valid;
@@ -290,7 +305,7 @@ template RLPDecodeList(dataMaxLen, listMinLen, listMaxLen, getField) {
         for (var i = 0; i < listMaxLen; i++) {
             out[i] <== 0;
         }
-        allShifted = ShiftLeft(dataMaxLen, listMinLen, listMaxLen + 4);
+        allShifted = ShiftLeft(dataMaxLen, listMinLen + minPrefixLength, listMaxLen + maxPrefixLength);
         for (var i = 0; i < dataMaxLen; i++) {
             allShifted.data[i] <== data[i];
         }
@@ -299,7 +314,7 @@ template RLPDecodeList(dataMaxLen, listMinLen, listMaxLen, getField) {
             shiftedData[i] <== allShifted.out[i];
         }
     } else {
-        prefixShifted = ShiftLeft(dataMaxLen, 0, 4);
+        prefixShifted = ShiftLeft(dataMaxLen, minPrefixLength, maxPrefixLength);
         for (var i = 0; i < dataMaxLen; i++) {
             prefixShifted.data[i] <== data[i];
         }
@@ -328,6 +343,8 @@ template RLPDecodeList(dataMaxLen, listMinLen, listMaxLen, getField) {
  */
 template RLPDecodeString(dataMaxLen, stringMinLen, stringMaxLen, getField) {
     assert(stringMaxLen < 16777216);
+    var minPrefixLength = 0;
+    var maxPrefixLength = maxBytesForLength(stringMaxLen);
     signal input data[dataMaxLen];
 
     signal output valid;
@@ -436,7 +453,7 @@ template RLPDecodeString(dataMaxLen, stringMinLen, stringMaxLen, getField) {
         for (var i = 0; i < stringMaxLen; i++) {
             out[i] <== 0;
         }
-        allShifted = ShiftLeft(dataMaxLen, stringMinLen, stringMaxLen + 4);
+        allShifted = ShiftLeft(dataMaxLen, stringMinLen + minPrefixLength, stringMaxLen + maxPrefixLength);
         for (var i = 0; i < dataMaxLen; i++) {
             allShifted.data[i] <== data[i];
         }
@@ -445,7 +462,7 @@ template RLPDecodeString(dataMaxLen, stringMinLen, stringMaxLen, getField) {
             shiftedData[i] <== allShifted.out[i];
         }
     } else {
-        prefixShifted = ShiftLeft(dataMaxLen, 0, 4);
+        prefixShifted = ShiftLeft(dataMaxLen, minPrefixLength, maxPrefixLength);
         for (var i = 0; i < dataMaxLen; i++) {
             prefixShifted.data[i] <== data[i];
         }

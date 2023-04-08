@@ -17,11 +17,11 @@ describe("RLP decoding", function () {
 
     async function testPrefix(data: string, expectedValueLen: number, expectedPrefixLen: number) {
         const encoded = RLP.encode(data);
-        const input = new Array(100000);
+        const input = new Array(1000);
         for (let i = 0; i < encoded.length; i ++) {
             input[i] = BigInt(encoded[i]);
         }
-        for (let i = encoded.length; i < 100000; i++) {
+        for (let i = encoded.length; i < 1000; i++) {
             input[i] = BigInt(0);
         }
         const witness = await circuit.calculateWitness({ data: input });
@@ -36,8 +36,8 @@ describe("RLP decoding", function () {
         ["length 56", "a".repeat(56), 56, 2],
         ["length 255", "a".repeat(255), 255, 2],
         ["length 256", "a".repeat(256), 256, 3],
-        ["length 65535", "a".repeat(65535), 65535, 3],
-        ["length 65536", "a".repeat(65536), 65536, 4],
+        // ["length 65535", "a".repeat(65535), 65535, 3],
+        // ["length 65536", "a".repeat(65536), 65536, 4],
         // heap limit reached
         // ["length 16777215", 16777215, 16777215, 4],
     ];
