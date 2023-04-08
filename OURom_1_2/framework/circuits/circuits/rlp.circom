@@ -61,11 +61,12 @@ template ShiftLeft(nIn, minShift, maxShift) {
  * `maxLen`: the maximum length of the input data.
  * `fieldNum`: the number of fields in the list.
  * `isListArray`: an array of length `fieldNum` indicating whether the field is a list.
+ * `getField`: an array of length `fieldNum` indicating whether the field content should be extracted to output.
  * `fieldMinArray`: an array of length `fieldNum` indicating the minimum length of the field.
  * `fieldMaxArray`: an array of length `fieldNum` indicating the maximum length of the field.
  * `enforceInput`: whether to enforce the input data to be 8-bit bytes.
  */
-template RLPDecodeFixedList(maxLen, fieldNum, isListArray, fieldMinArray, fieldMaxArray, enforceInput) {
+template RLPDecodeFixedList(maxLen, fieldNum, isListArray, getFieldArray, fieldMinArray, fieldMaxArray, enforceInput) {
     var computedTotalMinLen = 0;
     var computedTotalMaxLen = 0;
     for (var i = 0; i < fieldNum; i++) {
@@ -93,7 +94,7 @@ template RLPDecodeFixedList(maxLen, fieldNum, isListArray, fieldMinArray, fieldM
         }
     }
 
-    component decodeList = RLPDecodeList(maxLen, computedTotalMinLen, maxLen);
+    component decodeList = RLPDecodeList(maxLen, computedTotalMinLen, maxLen, 0);
     for (var i = 0; i < maxLen; i++) {
         decodeList.data[i] <== data[i];
     }
@@ -111,7 +112,7 @@ template RLPDecodeFixedList(maxLen, fieldNum, isListArray, fieldMinArray, fieldM
     var currentPosition = decodeList.prefixLen;
     component decodeField[fieldNum];
     for (var i = 0; i < fieldNum; i++) {
-        decodeField[i] = RLPDecodeSelect(maxLen, fieldMinArray[i], fieldMaxArray[i], isListArray[i]);
+        decodeField[i] = RLPDecodeSelect(maxLen, fieldMinArray[i], fieldMaxArray[i], isListArray[i], getFieldArray[i]);
         for (var j = 0; j < maxLen; j++) {
             decodeField[i].data[j] <== currentData[j];
         }
@@ -142,7 +143,7 @@ template RLPDecodeFixedList(maxLen, fieldNum, isListArray, fieldMinArray, fieldM
     valid <== validProduct[fieldNum-1];
 }
 
-template RLPDecodeSelect(dataMaxLen, valueMinLen, valueMaxLen, isList) {
+template RLPDecodeSelect(dataMaxLen, valueMinLen, valueMaxLen, isList, getField) {
     signal input data[dataMaxLen];
 
     signal output valid;
@@ -156,7 +157,7 @@ template RLPDecodeSelect(dataMaxLen, valueMinLen, valueMaxLen, isList) {
     var validVar, prefixLenVar, valueLenVar;
 
     if (isList) {
-        decodeList = RLPDecodeList(dataMaxLen, valueMinLen, valueMaxLen);
+        decodeList = RLPDecodeList(dataMaxLen, valueMinLen, valueMaxLen, getField);
         for (var i = 0; i < dataMaxLen; i++) {
             decodeList.data[i] <== data[i];
         }
@@ -170,7 +171,7 @@ template RLPDecodeSelect(dataMaxLen, valueMinLen, valueMaxLen, isList) {
         prefixLen <== decodeList.prefixLen;
         valueLen <== decodeList.valueLen;
     } else {
-        decodeString = RLPDecodeString(dataMaxLen, valueMinLen, valueMaxLen);
+        decodeString = RLPDecodeString(dataMaxLen, valueMinLen, valueMaxLen, getField);
         for (var i = 0; i < dataMaxLen; i++) {
             decodeString.data[i] <== data[i];
         }
@@ -187,7 +188,7 @@ template RLPDecodeSelect(dataMaxLen, valueMinLen, valueMaxLen, isList) {
 
 }
 
-template RLPDecodeList(dataMaxLen, listMinLen, listMaxLen) {
+template RLPDecodeList(dataMaxLen, listMinLen, listMaxLen, getField) {
     assert(dataMaxLen < 16777216);
     signal input data[dataMaxLen];
 
@@ -283,22 +284,38 @@ template RLPDecodeList(dataMaxLen, listMinLen, listMaxLen) {
         valueLenVar = finalValueLen3;
     }
     // We could add more here, but that's probably enough for now
-    component prefixShifted = ShiftLeft(dataMaxLen, 0, 4);
-    for (var i = 0; i < dataMaxLen; i++) {
-        prefixShifted.data[i] <== data[i];
-    }
-    prefixShifted.shift <== prefixLenVar;
-    for (var i = 0; i < listMaxLen; i++) {
-        out[i] <== prefixShifted.out[i];
-    }
-    component valueShifted = ShiftLeft(dataMaxLen, listMinLen, listMaxLen);
-    for (var i = 0; i < dataMaxLen; i++) {
-        valueShifted.data[i] <== data[i];
-    }
-    valueShifted.shift <== valueLenVar;
 
-    for (var i = 0; i < dataMaxLen; i++) {
-        shiftedData[i] <== valueShifted.out[i];
+    component prefixShifted, valueShifted, allShifted;
+    if (getField == 0) {
+        for (var i = 0; i < listMaxLen; i++) {
+            out[i] <== 0;
+        }
+        allShifted = ShiftLeft(dataMaxLen, listMinLen, listMaxLen + 4);
+        for (var i = 0; i < dataMaxLen; i++) {
+            allShifted.data[i] <== data[i];
+        }
+        allShifted.shift <== prefixLenVar + valueLenVar;
+        for (var i = 0; i < dataMaxLen; i++) {
+            shiftedData[i] <== allShifted.out[i];
+        }
+    } else {
+        prefixShifted = ShiftLeft(dataMaxLen, 0, 4);
+        for (var i = 0; i < dataMaxLen; i++) {
+            prefixShifted.data[i] <== data[i];
+        }
+        prefixShifted.shift <== prefixLenVar;
+        for (var i = 0; i < listMaxLen; i++) {
+            out[i] <== prefixShifted.out[i];
+        }
+        valueShifted = ShiftLeft(dataMaxLen, listMinLen, listMaxLen);
+        for (var i = 0; i < dataMaxLen; i++) {
+            valueShifted.data[i] <== prefixShifted.out[i];
+        }
+        valueShifted.shift <== valueLenVar;
+
+        for (var i = 0; i < dataMaxLen; i++) {
+            shiftedData[i] <== valueShifted.out[i];
+        }
     }
     valid <== validVar;
     prefixLen <== prefixLenVar;
@@ -309,7 +326,7 @@ template RLPDecodeList(dataMaxLen, listMinLen, listMaxLen) {
  * Checks the validity of an encoded string prefix.
  * `data` should contain the original data left-shifted to the start of encoded string.
  */
-template RLPDecodeString(dataMaxLen, stringMinLen, stringMaxLen) {
+template RLPDecodeString(dataMaxLen, stringMinLen, stringMaxLen, getField) {
     assert(stringMaxLen < 16777216);
     signal input data[dataMaxLen];
 
@@ -413,22 +430,38 @@ template RLPDecodeString(dataMaxLen, stringMinLen, stringMaxLen) {
         valueLenVar = finalValueLen3;
     }
     // We could add more here, but that's probably enough for now
-    component prefixShifted = ShiftLeft(dataMaxLen, 0, 4);
-    for (var i = 0; i < dataMaxLen; i++) {
-        prefixShifted.data[i] <== data[i];
-    }
-    prefixShifted.shift <== prefixLenVar;
-    for (var i = 0; i < stringMaxLen; i++) {
-        out[i] <== prefixShifted.out[i];
-    }
-    component valueShifted = ShiftLeft(dataMaxLen, stringMinLen, stringMaxLen);
-    for (var i = 0; i < dataMaxLen; i++) {
-        valueShifted.data[i] <== prefixShifted.out[i];
-    }
-    valueShifted.shift <== valueLenVar;
 
-    for (var i = 0; i < dataMaxLen; i++) {
-        shiftedData[i] <== valueShifted.out[i];
+    component prefixShifted, valueShifted, allShifted;
+    if (getField == 0) {
+        for (var i = 0; i < stringMaxLen; i++) {
+            out[i] <== 0;
+        }
+        allShifted = ShiftLeft(dataMaxLen, stringMinLen, stringMaxLen + 4);
+        for (var i = 0; i < dataMaxLen; i++) {
+            allShifted.data[i] <== data[i];
+        }
+        allShifted.shift <== prefixLenVar + valueLenVar;
+        for (var i = 0; i < dataMaxLen; i++) {
+            shiftedData[i] <== allShifted.out[i];
+        }
+    } else {
+        prefixShifted = ShiftLeft(dataMaxLen, 0, 4);
+        for (var i = 0; i < dataMaxLen; i++) {
+            prefixShifted.data[i] <== data[i];
+        }
+        prefixShifted.shift <== prefixLenVar;
+        for (var i = 0; i < stringMaxLen; i++) {
+            out[i] <== prefixShifted.out[i];
+        }
+        valueShifted = ShiftLeft(dataMaxLen, stringMinLen, stringMaxLen);
+        for (var i = 0; i < dataMaxLen; i++) {
+            valueShifted.data[i] <== prefixShifted.out[i];
+        }
+        valueShifted.shift <== valueLenVar;
+
+        for (var i = 0; i < dataMaxLen; i++) {
+            shiftedData[i] <== valueShifted.out[i];
+        }
     }
     valid <== validVar;
     prefixLen <== prefixLenVar;
