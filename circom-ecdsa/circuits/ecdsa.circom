@@ -2,6 +2,7 @@ pragma circom 2.0.2;
 
 include "../node_modules/circomlib/circuits/comparators.circom";
 include "../node_modules/circomlib/circuits/multiplexer.circom";
+include "../node_modules/circomlib/circuits/mux1.circom";
 
 include "bigint.circom";
 include "secp256k1.circom";
@@ -223,6 +224,94 @@ template ECDSAVerifyNoPubkeyCheck(n, k) {
     res_comp.in[0] <== k;
     res_comp.in[1] <== num_equal[k - 2];
     result <== res_comp.out;
+}
+
+template ERcover(n, k) {
+    signal input r[k];
+    signal input s[k];
+    signal input v;
+    signal input msghash[k];
+
+    signal output pubKey[2][k];
+
+    v * (v - 1) === 0; // v must be one or zero
+    var p[100] = get_secp256k1_prime(n, k);
+    var order[100] = get_secp256k1_order(n, k);
+
+    // compute x ** 3
+    component square = BigMultModP(n, k);
+    for (var idx = 0; idx < k; idx++) {
+        square.a[idx] <== r[idx];
+        square.b[idx] <== r[idx];
+        square.p[idx] <== p[idx];
+    }
+    component triple = BigMultModP(n, k);
+    for (var idx = 0; idx < k; idx++) {
+        triple.a[idx] <== square.out[idx];
+        triple.b[idx] <== r[idx];
+        triple.p[idx] <== p[idx];
+    }
+    // compute y ** 2 = x ** 3 + 7 (mod p)
+    var tripleAddSeven = BigAdd(n, k);
+    for (var idx = 0; idx < k; idx++) {
+        tripleAddSeven.a[idx] <== triple.out[idx];
+        if (idx == 0) {
+            tripleAddSeven.b[idx] <== 7;
+        } else {
+            tripleAddSeven.b[idx] <== 0;
+        }
+        tripleAddSeven.p[idx] <== p[idx];
+    }
+    component ysquare = BigMod(n, k);
+    for (var idx = 0; idx < k; idx++) {
+        ysquare.a[idx] <== tripleAddSeven.out[idx];
+        ysquare.p[idx] <== p[idx];
+    }
+    // compute sqrt(y ** 2)
+    component ry = BigSqrtModP(n, k);
+    for (var idx = 0; idx < k; idx++) {
+        ry.a[idx] <== ysquare.out[idx];
+        ry.p[idx] <== p[idx];
+    }
+    component alternative_ry = BigSub(n, k);
+    for (var idx = 0; idx < k; idx++) {
+        alternative_ry.a[idx] <== p[idx];
+        alternative_ry.b[idx] <== ry.out[idx];
+    }
+    // recover y from sqrt(y ** 2) and v
+    component n2b = Num2Bits(n);
+    n2b.in <== ry.out[0];
+    component mux_ry = MultiMux1(k);
+    // Are `v` and `ry` both odd?
+    signal is_alternative = n2b.out[0] * v + n2b.out[0] + v;
+    for (var i = 0; i < k; i++) {
+        mux_ry.c[i][0] <== ry.out[i];
+        mux_ry.c[i][1] <== alternative_ry.out[i];
+    }
+
+    // compute multiplicative inverse of r mod n
+    var rinv_comp[100] = mod_inv(n, k, r, order);
+    signal rinv[k];
+    component rinv_range_checks[k];
+    for (var idx = 0; idx < k; idx++) {
+        rinv[idx] <-- rinv_comp[idx];
+        rinv_range_checks[idx] = Num2Bits(n);
+        rinv_range_checks[idx].in <== rinv[idx];
+    }
+    component sinv_check = BigMultModP(n, k);
+    for (var idx = 0; idx < k; idx++) {
+        rinv_check.a[idx] <== rinv[idx];
+        rinv_check.b[idx] <== r[idx];
+        rinv_check.p[idx] <== order[idx];
+    }
+    for (var idx = 0; idx < k; idx++) {
+        if (idx > 0) {
+            rinv_check.out[idx] === 0;
+        }
+        if (idx == 0) {
+            rinv_check.out[idx] === 1;
+        }
+    }
 }
 
 // TODO: implement ECDSA extended verify
