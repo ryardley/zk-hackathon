@@ -224,10 +224,6 @@ function secp256k1_power_func(n, k, x1, y1, e){
             }
         }
     }
-    // for (var i = 0; i < k; i++) {
-    //     out[0][i] = 1;
-    //     out[1][i] = 1;
-    // }
 
     return out;
 }

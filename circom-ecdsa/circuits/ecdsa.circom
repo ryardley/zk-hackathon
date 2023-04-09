@@ -319,24 +319,41 @@ template ECDSARecover(n, k) {
     // compute multiplicative inverse of r mod order
     var rinv_comp[100] = mod_inv(n, k, r, order);
     // compute sR
-    var sr[2][100] = secp256k1_power_func(n, k, r, ry, s);
+    component sr = Secp256k1ScalarMult(n, k);
+    for (var i = 0; i < k; i++) {
+        sr.scalar[i] <-- s[i];
+        sr.point[0][i] <-- r[i];
+        sr.point[1][i] <-- ry[i];
+    }
     // compute zG
-    var zg[2][100] = secp256k1_power_func(n, k, get_gx(n, k), get_gy(n, k), msghash);
+    component zg = Secp256k1ScalarMult(n, k);
+    var gx[100] = get_gx(n, k);
+    var gy[100] = get_gy(n, k);
+    for (var i = 0; i < k; i++) {
+        zg.scalar[i] <-- msghash[i];
+        zg.point[0][i] <-- gx[i];
+        zg.point[1][i] <-- gy[i];
+    }
     // compute sR - zG
     var nzg[2][100];
     var zero[100];
     for (var i = 0; i < 100; i++) {
         zero[i] = 0;
     }
-    nzg[0] = zg[0];
-    nzg[1] = long_sub_mod_p(n, k, zero, zg[1], order);
-    var interm[2][100] = secp256k1_addunequal_func(n, k, sr[0], sr[1], nzg[0], nzg[1]);
+    nzg[0] = zg.out[0];
+    nzg[1] = long_sub_mod_p(n, k, zero, zg.out[1], order);
+    var interm[2][100] = secp256k1_addunequal_func(n, k, sr.out[0], sr.out[1], nzg[0], nzg[1]);
     // compute public key
-    var pk[2][100] = secp256k1_power_func(n, k, interm[0], interm[1], rinv_comp);
+    component pk = Secp256k1ScalarMult(n, k);
+    for (var i = 0; i < k; i++) {
+        pk.scalar[i] <-- interm[0][i];
+        pk.point[0][i] <-- interm[1][i];
+        pk.point[1][i] <-- ry[i];
+    }
 
     for (var i = 0; i < k; i++) {
-        pubKey[0][i] <-- pk[0][i];
-        pubKey[1][i] <-- pk[1][i];
+        pubKey[0][i] <-- pk.out[0][i];
+        pubKey[1][i] <-- pk.out[1][i];
     }
 
     // Ensure that ry is odd when v is 1, ry is even when v is 0
@@ -350,14 +367,14 @@ template ECDSARecover(n, k) {
     // Ensure pubkey is valid
     component verifyPubKey = ECDSACheckPubKey(n, k);
     for (var i = 0; i < k; i++) {
-        verifyPubKey.pubkey[0][i] <== pk[0][i];
-        verifyPubKey.pubkey[1][i] <== pk[1][i];
+        verifyPubKey.pubkey[0][i] <== pubKey[0][i];
+        verifyPubKey.pubkey[1][i] <== pubKey[1][i];
     }
     // Ensure signature check pass
     component verifyCheck = ECDSAVerifyNoPubkeyCheck(n, k);
     for (var i = 0; i < k; i++) {
-        verifyCheck.pubkey[0][i] <== pk[0][i];
-        verifyCheck.pubkey[1][i] <== pk[1][i];
+        verifyCheck.pubkey[0][i] <== pubKey[0][i];
+        verifyCheck.pubkey[1][i] <== pubKey[1][i];
         verifyCheck.r[i] <== r[i];
         verifyCheck.s[i] <== s[i];
         verifyCheck.msghash[i] <== msghash[i];
