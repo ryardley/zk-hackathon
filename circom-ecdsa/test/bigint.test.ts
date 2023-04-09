@@ -447,3 +447,43 @@ describe("BigLessThan n = 2, k = 3 exhaustive", function() {
     test_cases.forEach(test_biglessthan_23);
 });
 
+describe("BigSqrt n = 3, k = 2, p = 7", function() {
+    this.timeout(1000 * 1000);
+
+    // runs circom compilation
+    let circuit: any;
+    before(async function () {
+        circuit = await wasm_tester(path.join(__dirname, "circuits", "test_bigsqrtmodp_32.circom"));
+    });
+
+    // a, b, p, (a - b) % p
+    let test_cases: Array<[bigint, bigint, bigint]> = [];
+    const p = 7n;
+    for (let a = 0n; a < 8 * 8 && a < p; a++) {
+        const check = (a**((p-1n)/2n)) % p;
+        if (check == 1n) {
+            test_cases.push([a, p, (a**((p+1n)/4n)) % p]);
+        }
+    }
+
+    let test_bigint_sqrt = function (x: [bigint, bigint, bigint]) {
+        const [a, p, sqrt] = x;
+
+        let a_array: bigint[] = bigint_to_array(3, 2, a);
+        let p_array: bigint[] = bigint_to_array(3, 2, p);
+        let sqrt_array: bigint[] = bigint_to_array(3, 2, sqrt);
+
+        it('Testing a: ' + a + ' p: ' + p + ' sqrt: ' + sqrt, async function() {
+            let witness = await circuit.calculateWitness({
+                "in": a_array,
+                "p": p_array
+            });
+            expect(witness[1]).to.equal(sqrt_array[0]);
+            expect(witness[2]).to.equal(sqrt_array[1]);
+            await circuit.checkConstraints(witness);
+        });
+    }
+
+    test_cases.forEach(test_bigint_sqrt);
+})
+

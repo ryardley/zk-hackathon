@@ -502,6 +502,42 @@ template BigMultModP(n, k) {
     }
 }
 
+// calculates sqrt(a) % p, where a < p
+// p is required to be of the form 3 (mod 4)
+template BigSqrtModP(n, k){
+    assert(n <= 126);
+    signal input in[k];
+    signal input p[k];
+    signal output out[k];
+
+    // length k
+    var result[100] = sqrt_mod_p(n, k, in, p);
+    for (var i = 0; i < k; i++) {
+        out[i] <-- result[i];
+    }
+    component range_checks[k];
+    for (var i = 0; i < k; i++) {
+        range_checks[i] = Num2Bits(n);
+        range_checks[i].in <== out[i];
+    }
+
+    component mult = BigMult(n, k);
+    for (var i = 0; i < k; i++) {
+        mult.a[i] <== in[i];
+        mult.b[i] <== in[i];
+    }
+    component mod = BigMod(n, k);
+    for (var i = 0; i < 2 * k; i++) {
+        mod.a[i] <== mult.out[i];
+    }
+    for (var i = 0; i < k; i++) {
+        mod.b[i] <== p[i];
+    }
+    for (var i = 1; i < k; i++) {
+        mod.div[i] === in[i];
+    }
+}
+
 template BigModInv(n, k) {
     assert(n <= 252);
     signal input in[k];

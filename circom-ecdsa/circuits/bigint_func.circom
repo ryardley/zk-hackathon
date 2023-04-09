@@ -440,3 +440,30 @@ function prod_mod_p(n, k, a, b, p){
     result = long_div(n, k, k, tmp, p);
     return result[1];
 }
+
+function sqrt_mod_p(n, k, a, p){
+    assert(p[0] != (1 << k) - 1); // don't handle overflow
+    var pPlusOne[100];
+    for(var i = 0;i < 100; i++){
+        if(i < k){
+            pPlusOne[i] = p[i];
+        }
+        else{
+            pPlusOne[i] = 0;
+        }
+    }
+    pPlusOne[0] = pPlusOne[0] + 1;
+
+    var pPlusOneDivFour[100];
+    var carry = 0;
+    for (var i = 99; i >= 0; i--) {
+        var current = pPlusOne[i] + (carry << n);
+        pPlusOneDivFour[i] = current >> 2;
+        carry = current & 3;
+    }
+    assert(carry == 0); // (p + 1) should divide 4
+
+    var out[100];
+    out = mod_exp(n, k, a, p, pPlusOneDivFour);
+    return out;
+}
