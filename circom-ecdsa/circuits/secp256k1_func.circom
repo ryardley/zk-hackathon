@@ -2,23 +2,35 @@ pragma circom 2.0.2;
 
 // from https://github.com/ethereum/py_ecc/blob/master/py_ecc/secp256k1/secp256k1.py
 function get_gx(n, k) {
-    assert(n == 86 && k == 3);
+    assert((n == 86 && k == 3) || (n == 64 && k == 4));
     var ret[100];
     if (n == 86 && k == 3) {
         ret[0] = 17117865558768631194064792;
         ret[1] = 12501176021340589225372855;
         ret[2] = 9198697782662356105779718;
     }
+    if (n == 64 && k == 4) {
+        ret[0] = 6481385041966929816;
+        ret[1] = 188021827762530521;
+        ret[2] = 6170039885052185351;
+        ret[3] = 8772561819708210092;
+    }
     return ret;
 }
 
 function get_gy(n, k) {
-    assert(n == 86 && k == 3);
+    assert((n == 86 && k == 3) || (n == 64 && k == 4));
     var ret[100];
     if (n == 86 && k == 3) {
         ret[0] = 6441780312434748884571320;
         ret[1] = 57953919405111227542741658;
         ret[2] = 5457536640262350763842127;
+    }
+    if (n == 64 && k == 4) {
+        ret[0] = 11261198710074299576;
+        ret[1] = 18237243440184513561;
+        ret[2] = 6747795201694173352;
+        ret[3] = 5204712524664259685;
     }
     return ret;
 }
@@ -177,6 +189,40 @@ function secp256k1_double_func(n, k, x1, y1){
     var out1_out[100] = long_sub_mod_p(n, k, out1_1_out, a[1], p);
     for (var i = 0; i < k; i++) {
         out[1][i] = out1_out[i];
+    }
+
+    return out;
+}
+
+function secp256k1_power_func(n, k, x1, y1, e){
+    var notZero = 0;
+    for (var i = 0; i < k; i++) {
+        if (e[i] != 0) {
+            notZero += 1;
+        }
+    }
+    assert(notZero > 0);
+
+    var out[2][100];
+    var initialized = 0;
+
+    for (var i = k-1; i >= 0; i--) {
+        for (var j = n-1; j >= 0; j--) {
+            if (initialized == 1) {
+                out = secp256k1_double_func(n, k, out[0], out[1]);
+            }
+            var bit = (e[i] >> j) & 1;
+            if (bit == 1) {
+                if (initialized == 0) {
+                    for (var l = 0; l < k; i++) {
+                        out[0][l] = x1[l];
+                        out[1][l] = y1[l];
+                    }
+                    initialized = 1;
+                }
+                out = secp256k1_addunequal_func(n, k, out[0], out[1], x1, y1);
+            }
+        }
     }
 
     return out;
