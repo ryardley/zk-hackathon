@@ -2,7 +2,7 @@ pragma circom 2.0.2;
 
 include "../node_modules/circomlib/circuits/comparators.circom";
 include "../node_modules/circomlib/circuits/multiplexer.circom";
-include "../node_modules/circomlib/circuits/switcher.circom";
+include "../node_modules/circomlib/circuits/mux1.circom";
 
 include "bigint.circom";
 include "secp256k1.circom";
@@ -226,62 +226,7 @@ template ECDSAVerifyNoPubkeyCheck(n, k) {
     result <== res_comp.out;
 }
 
-// Included from this PR: https://github.com/0xPARC/circom-ecdsa/pull/18/files
-// Checks pubkey is a valid public key by making sure its points are on the curve and that nQ = 0.
-// Algorithm from Johnson et al https://doi.org/10.1007/s102070100002 section 6.2
-template ECDSACheckPubKey(n, k) {
-    assert(n == 64 && k == 4);
-    signal input pubkey[2][k];
-
-    // Checks coordinates are in the base field, that Q is on the curve, and that Q != 0
-    component point_on_curve = Secp256k1PointOnCurve();
-    for (var i = 0; i < 4; i++) {
-        point_on_curve.x[i] <== pubkey[0][i];
-        point_on_curve.y[i] <== pubkey[1][i];
-    }
-
-    // We don't represent 0 as an actual point so we can't directly check that nQ = 0
-    // Instead we check that (n - 2)Q = 2(-Q)
-    // Note that we can't use (n - 1)Q = -Q since the double and add circuit implicitly tries to calculate nQ and errors
-    var order_minus_one[100] = get_secp256k1_order(n, k);
-    order_minus_one[0] -= 2;
-
-    component lhs = Secp256k1ScalarMult(n, k);
-    for (var i = 0; i < k; i++) {
-        lhs.scalar[i] <== order_minus_one[i];
-    }
-    for (var i = 0; i < k; i++) {
-        lhs.point[0][i] <== pubkey[0][i];
-        lhs.point[1][i] <== pubkey[1][i];
-    }
-
-    // Check each coordinate of our equality independently.
-    // Note: Q = (x, y) => -Q = (x, -y)
-    // So we can check the x coordinate with [(n-1)*Q].x = Q.x,
-
-    // Because -y === p - y mod p,
-    //  we can check the y coordinate with [(n-1)*Q].y = p - Q.y
-    var prime[100] = get_secp256k1_prime(n, k);
-    component negative_y = BigSub(n, k);
-    for (var i = 0; i < k; i++) {
-        negative_y.a[i] <== prime[i];
-        negative_y.b[i] <== pubkey[1][i];
-    }
-    negative_y.underflow === 0;
-
-    component rhs = Secp256k1Double(n, k);
-    for (var i = 0; i < k; i++) {
-        rhs.in[0][i] <== pubkey[0][i];
-        rhs.in[1][i] <== negative_y.out[i];
-    }
-
-    for (var i = 0; i < k; i++) {
-        lhs.out[0][i] === rhs.out[0][i];
-        lhs.out[1][i] === rhs.out[1][i];
-    }
-}
-
-template ECDSARecover(n, k) {
+template ERcover(n, k) {
     signal input r[k];
     signal input s[k];
     signal input v;
@@ -294,92 +239,79 @@ template ECDSARecover(n, k) {
     var order[100] = get_secp256k1_order(n, k);
 
     // compute x ** 3
-    var square[100] = prod_mod_p(n, k, r, r, p);
-    var triple[100] = prod_mod_p(n, k, r, square, p);
+    component square = BigMultModP(n, k);
+    for (var idx = 0; idx < k; idx++) {
+        square.a[idx] <== r[idx];
+        square.b[idx] <== r[idx];
+        square.p[idx] <== p[idx];
+    }
+    component triple = BigMultModP(n, k);
+    for (var idx = 0; idx < k; idx++) {
+        triple.a[idx] <== square.out[idx];
+        triple.b[idx] <== r[idx];
+        triple.p[idx] <== p[idx];
+    }
     // compute y ** 2 = x ** 3 + 7 (mod p)
-    var seven[100];
-    for (var i = 0; i < 100; i++) {
-        seven[i] = 0;
+    var tripleAddSeven = BigAdd(n, k);
+    for (var idx = 0; idx < k; idx++) {
+        tripleAddSeven.a[idx] <== triple.out[idx];
+        if (idx == 0) {
+            tripleAddSeven.b[idx] <== 7;
+        } else {
+            tripleAddSeven.b[idx] <== 0;
+        }
+        tripleAddSeven.p[idx] <== p[idx];
     }
-    seven[0] = 7;
-    var minusSeven[100] = long_sub_mod_p(n, k, p, seven, p);
-    var ysquare[100] = long_sub_mod_p(n, k, triple, minusSeven, p);
+    component ysquare = BigMod(n, k);
+    for (var idx = 0; idx < k; idx++) {
+        ysquare.a[idx] <== tripleAddSeven.out[idx];
+        ysquare.p[idx] <== p[idx];
+    }
     // compute sqrt(y ** 2)
-    var ry[100] = sqrt_mod_p(n, k, ysquare, p);
+    component ry = BigSqrtModP(n, k);
+    for (var idx = 0; idx < k; idx++) {
+        ry.a[idx] <== ysquare.out[idx];
+        ry.p[idx] <== p[idx];
+    }
+    component alternative_ry = BigSub(n, k);
+    for (var idx = 0; idx < k; idx++) {
+        alternative_ry.a[idx] <== p[idx];
+        alternative_ry.b[idx] <== ry.out[idx];
+    }
     // recover y from sqrt(y ** 2) and v
-    if (v == 1) {
-        if (ry[0] & 1 != 1) {
-            ry = long_sub_mod_p(n, k, p, ry, p);
-        }
-    } else {
-        if (ry[0] & 1 == 1) {
-            ry = long_sub_mod_p(n, k, p, ry, p);
-        }
-    }
-    // compute multiplicative inverse of r mod order
-    var rinv_comp[100] = mod_inv(n, k, r, order);
-    // compute sR
-    component sr = Secp256k1ScalarMultNoConstraint(n, k);
-    for (var i = 0; i < k; i++) {
-        sr.scalar[i] <-- s[i];
-        sr.point[0][i] <-- r[i];
-        sr.point[1][i] <-- ry[i];
-    }
-    // compute zG
-    component zg = Secp256k1ScalarMultNoConstraint(n, k);
-    var gx[100] = get_gx(n, k);
-    var gy[100] = get_gy(n, k);
-    for (var i = 0; i < k; i++) {
-        zg.scalar[i] <-- msghash[i];
-        zg.point[0][i] <-- gx[i];
-        zg.point[1][i] <-- gy[i];
-    }
-    // compute sR - zG
-    var nzg[2][100];
-    var zero[100];
-    for (var i = 0; i < 100; i++) {
-        zero[i] = 0;
-    }
-    nzg[0] = zg.out[0];
-    nzg[1] = long_sub_mod_p(n, k, zero, zg.out[1], order);
-    var interm[2][100] = secp256k1_addunequal_func(n, k, sr.out[0], sr.out[1], nzg[0], nzg[1]);
-    // compute public key
-    component pk = Secp256k1ScalarMultNoConstraint(n, k);
-    for (var i = 0; i < k; i++) {
-        pk.scalar[i] <-- interm[0][i];
-        pk.point[0][i] <-- interm[1][i];
-        pk.point[1][i] <-- ry[i];
-    }
-
-    for (var i = 0; i < k; i++) {
-        pubKey[0][i] <-- pk.out[0][i];
-        pubKey[1][i] <-- pk.out[1][i];
-    }
-
-    // Ensure that ry is odd when v is 1, ry is even when v is 0
     component n2b = Num2Bits(n);
-    n2b.in <== pubKey[1][0];
-    component sw = Switcher();
-    sw.L <== n2b.out[0];
-    sw.R <== 1 - n2b.out[0];
-    sw.sel <== v;
-    sw.outL === 0;
-    // Ensure pubkey is valid
-    component verifyPubKey = ECDSACheckPubKey(n, k);
+    n2b.in <== ry.out[0];
+    component mux_ry = MultiMux1(k);
+    // Are `v` and `ry` both odd?
+    signal is_alternative = n2b.out[0] * v + n2b.out[0] + v;
     for (var i = 0; i < k; i++) {
-        verifyPubKey.pubkey[0][i] <== pubKey[0][i];
-        verifyPubKey.pubkey[1][i] <== pubKey[1][i];
+        mux_ry.c[i][0] <== ry.out[i];
+        mux_ry.c[i][1] <== alternative_ry.out[i];
     }
-    // Ensure signature check pass
-    component verifyCheck = ECDSAVerifyNoPubkeyCheck(n, k);
-    for (var i = 0; i < k; i++) {
-        verifyCheck.pubkey[0][i] <== pubKey[0][i];
-        verifyCheck.pubkey[1][i] <== pubKey[1][i];
-        verifyCheck.r[i] <== r[i];
-        verifyCheck.s[i] <== s[i];
-        verifyCheck.msghash[i] <== msghash[i];
+
+    // compute multiplicative inverse of r mod n
+    var rinv_comp[100] = mod_inv(n, k, r, order);
+    signal rinv[k];
+    component rinv_range_checks[k];
+    for (var idx = 0; idx < k; idx++) {
+        rinv[idx] <-- rinv_comp[idx];
+        rinv_range_checks[idx] = Num2Bits(n);
+        rinv_range_checks[idx].in <== rinv[idx];
     }
-    verifyCheck.result === 1;
+    component sinv_check = BigMultModP(n, k);
+    for (var idx = 0; idx < k; idx++) {
+        rinv_check.a[idx] <== rinv[idx];
+        rinv_check.b[idx] <== r[idx];
+        rinv_check.p[idx] <== order[idx];
+    }
+    for (var idx = 0; idx < k; idx++) {
+        if (idx > 0) {
+            rinv_check.out[idx] === 0;
+        }
+        if (idx == 0) {
+            rinv_check.out[idx] === 1;
+        }
+    }
 }
 
 // TODO: implement ECDSA extended verify
