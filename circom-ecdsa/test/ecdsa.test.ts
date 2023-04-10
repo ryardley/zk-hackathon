@@ -244,7 +244,7 @@ describe("ECDSARecover", function () {
 
         it('Testing correct pubkey: privkey: ' + privkey + ' msghash: ' + msghash_bigint + ' pub0: ' + pub0 + ' pub1: ' + pub1, async function() {
             // in compact format: r (big-endian), 32-bytes + s (big-endian), 32-bytes
-            var sig: Uint8Array = await sign(msghash, bigint_to_Uint8Array(privkey), {canonical: true, der: false})
+            var [sig, v] = await sign(msghash, bigint_to_Uint8Array(privkey), {canonical: true, der: false, recovered: true})
             var r: Uint8Array = sig.slice(0, 32);
             var r_bigint: bigint = Uint8Array_to_bigint(r);
             var s: Uint8Array = sig.slice(32, 64);
@@ -259,12 +259,26 @@ describe("ECDSARecover", function () {
 
             console.log('r', r_bigint);
             console.log('s', s_bigint);
+            console.log('r', r_array);
+            console.log('m', msghash_bigint);
+            console.log('s', s_array);
+            console.log('v', v);
+            console.log('p[0]', pub0_array);
+            console.log('p[1]', pub1_array);
             let witness = await circuit.calculateWitness({"r": r_array,
                                                           "s": s_array,
-                                                          "v": pub0 % 2n,
+                                                          "v": v,
                                                           "msghash": msghash_array});
             await circuit.checkConstraints(witness);
-            await circuit.assertOut({ "pubKey": [pub0_array, pub1_array] })
+            expect(witness[1]).to.equal(pub0_array[0]);
+            expect(witness[2]).to.equal(pub0_array[1]);
+            expect(witness[3]).to.equal(pub0_array[2]);
+            expect(witness[4]).to.equal(pub0_array[3]);
+            expect(witness[5]).to.equal(pub1_array[0]);
+            expect(witness[6]).to.equal(pub1_array[1]);
+            expect(witness[7]).to.equal(pub1_array[2]);
+            expect(witness[8]).to.equal(pub1_array[3]);
+            await circuit.checkConstraints(witness);
         });
     }
 

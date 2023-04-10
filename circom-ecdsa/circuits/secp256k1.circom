@@ -434,7 +434,7 @@ template Secp256k1ScalarMultNoConstraint(n, k) {
     signal n2b[k][n];
     for (var i = 0; i < k; i++) {
         for (var j = 0; j < n; j++) {
-            n2b[i][j] <-- (scalar[i] >> i) & 1;
+            n2b[i][j] <-- (scalar[i] >> j) & 1;
         }
     }
 

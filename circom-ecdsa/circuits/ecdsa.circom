@@ -307,17 +307,14 @@ template ECDSARecover(n, k) {
     // compute sqrt(y ** 2)
     var ry[100] = sqrt_mod_p(n, k, ysquare, p);
     // recover y from sqrt(y ** 2) and v
-    if (v == 1) {
-        if (ry[0] & 1 != 1) {
-            ry = long_sub_mod_p(n, k, p, ry, p);
-        }
-    } else {
-        if (ry[0] & 1 == 1) {
-            ry = long_sub_mod_p(n, k, p, ry, p);
-        }
+    if (v > 2) {
+        ry = long_add(n, k, ry, order);
     }
-    // compute multiplicative inverse of r mod order
-    var rinv_comp[100] = mod_inv(n, k, r, order);
+    if ((v&1)+(ry[0]&1) == 1) {
+        ry = long_sub_mod_p(n, k, p, ry, p);
+    }
+    log("rx", r[0], r[1], r[2], r[3]);
+    log("ry", ry[0], ry[1], ry[2], ry[3]);
     // compute sR
     component sr = Secp256k1ScalarMultNoConstraint(n, k);
     for (var i = 0; i < k; i++) {
@@ -325,6 +322,8 @@ template ECDSARecover(n, k) {
         sr.point[0][i] <-- r[i];
         sr.point[1][i] <-- ry[i];
     }
+    log("srx", sr.out[0][0], sr.out[0][1], sr.out[0][2], sr.out[0][3]);
+    log("sry", sr.out[1][0], sr.out[1][1], sr.out[1][2], sr.out[1][3]);
     // compute zG
     component zg = Secp256k1ScalarMultNoConstraint(n, k);
     var gx[100] = get_gx(n, k);
@@ -334,21 +333,21 @@ template ECDSARecover(n, k) {
         zg.point[0][i] <-- gx[i];
         zg.point[1][i] <-- gy[i];
     }
+    log("zgx", zg.out[0][0], zg.out[0][1], zg.out[0][2], zg.out[0][3]);
+    log("zgy", zg.out[1][0], zg.out[1][1], zg.out[1][2], zg.out[1][3]);
     // compute sR - zG
     var nzg[2][100];
-    var zero[100];
-    for (var i = 0; i < 100; i++) {
-        zero[i] = 0;
-    }
     nzg[0] = zg.out[0];
-    nzg[1] = long_sub_mod_p(n, k, zero, zg.out[1], order);
+    nzg[1] = long_sub_mod_p(n, k, p, zg.out[1], p);
     var interm[2][100] = secp256k1_addunequal_func(n, k, sr.out[0], sr.out[1], nzg[0], nzg[1]);
+    // compute multiplicative inverse of r mod order
+    var r_inv[100] = mod_inv(n, k, r, order);
     // compute public key
     component pk = Secp256k1ScalarMultNoConstraint(n, k);
     for (var i = 0; i < k; i++) {
-        pk.scalar[i] <-- interm[0][i];
-        pk.point[0][i] <-- interm[1][i];
-        pk.point[1][i] <-- ry[i];
+        pk.scalar[i] <-- r_inv[i];
+        pk.point[0][i] <-- interm[0][i];
+        pk.point[1][i] <-- interm[1][i];
     }
 
     for (var i = 0; i < k; i++) {
@@ -356,14 +355,8 @@ template ECDSARecover(n, k) {
         pubKey[1][i] <-- pk.out[1][i];
     }
 
-    // Ensure that ry is odd when v is 1, ry is even when v is 0
-    component n2b = Num2Bits(n);
-    n2b.in <== pubKey[1][0];
-    component sw = Switcher();
-    sw.L <== n2b.out[0];
-    sw.R <== 1 - n2b.out[0];
-    sw.sel <== v;
-    sw.outL === 0;
+    log("px", pubKey[0][0], pubKey[0][1], pubKey[0][2], pubKey[0][3]);
+    log("py", pubKey[1][0], pubKey[1][1], pubKey[1][2], pubKey[1][3]);
     // Ensure pubkey is valid
     component verifyPubKey = ECDSACheckPubKey(n, k);
     for (var i = 0; i < k; i++) {

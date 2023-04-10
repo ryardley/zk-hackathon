@@ -162,6 +162,21 @@ function long_sub(n, k, a, b) {
     return diff;
 }
 
+// n bits per register
+// a has k registers
+// b has k registers
+function long_add(n, k, a, b) {
+    var sum[100];
+    var carry = 0;
+    for (var i = 0; i < k; i++) {
+        var s = a[i] + b[i] + carry;
+        carry = s / (1 << n);
+        sum[i] = s % (1 << n);
+    }
+    assert(carry == 0);
+    return sum;
+}
+
 // a is a n-bit scalar
 // b has k registers
 function long_scalar_mult(n, k, a, b) {
