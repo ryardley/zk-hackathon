@@ -158,6 +158,33 @@ template Final(nBits) {
     }
 }
 
+template FinalV() {
+    var blockSize=136*8;
+
+    signal input in[blockSize];
+    signal input len;
+    signal output out[25*64];
+    var i;
+
+    // pad
+    component pad = PadV();
+    for (i=0; i<blockSize; i++) {
+        pad.in[i] <== in[i];
+    }
+    pad.len <== len;
+    // absorb
+    component abs = Absorb();
+    for (i=0; i<blockSize; i++) {
+        abs.block[i] <== pad.out[i];
+    }
+    for (i=0; i<25*64; i++) {
+        abs.s[i] <== 0;
+    }
+    for (i=0; i<25*64; i++) {
+        out[i] <== abs.out[i];
+    }
+}
+
 template Squeeze(nBits) {
     signal input s[25*64];
     signal output out[nBits];

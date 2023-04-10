@@ -187,7 +187,7 @@ describe("Keccak-Final test", function () {
 
     let cir;
     before(async () => {
-	cir = await c_tester(path.join(__dirname, "circuits", "final_test.circom"));
+	cir = await wasm_tester(path.join(__dirname, "circuits", "final_test.circom"));
 	await cir.loadConstraints();
 	console.log("n_constraints", cir.constraints.length);
     });
@@ -242,6 +242,83 @@ describe("Keccak-Final test", function () {
 	const expectedOutBits = utils.u64ArrayToBits(expectedOut);
 
 	const witness = await cir.calculateWitness({ "in": inIn }, true);
+
+	const stateOut = witness.slice(1, 1+(25*64));
+	const stateOutU64 = utils.bitsToU64Array(stateOut);
+	// console.log(stateOutU64, expectedOut);
+	assert.deepEqual(stateOutU64, expectedOut);
+    });
+});
+
+function padInput(input) {
+	const inputLen = input.length;
+	for (let i = 0; i < 136-inputLen; i++) {
+		input.push(0);
+	}
+	return input;
+}
+
+describe("Keccak-FinalV test", function () {
+    this.timeout(100000);
+
+    let cir;
+    before(async () => {
+	cir = await wasm_tester(path.join(__dirname, "circuits", "finalv_test.circom"));
+	await cir.loadConstraints();
+	console.log("n_constraints", cir.constraints.length);
+    });
+    it ("Final 1 (testvector generated from go)", async () => {
+	const input =
+	    [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31];
+	const len = input.length*8;
+	const expectedOut = utils.strsToBigInts(["16953415415620100490",
+	    "7495738965189503699", "12723370805759944158",
+	    "3295955328722933810", "12121371508560456016",
+	    "174876831679863147", "15944933357501475584",
+	    "7502339663607726274", "12048918224562833898",
+	    "16715284461100269102", "15582559130083209842",
+	    "1743886467337678829", "2424196198791253761",
+	    "1116417308245482383", "10367365997906434042",
+	    "1849801549382613906", "13294939539683415102",
+	    "4478091053375708790", "2969967870313332958",
+	    "14618962068930014237", "2721742233407503451",
+	    "12003265593030191290", "8109318293656735684",
+	    "6346795302983965746", "12210038122000333046"]);
+
+	const inIn = utils.bytesToBits(padInput(input));
+	const expectedOutBits = utils.u64ArrayToBits(expectedOut);
+
+	const witness = await cir.calculateWitness({ "in": inIn, "len": len }, true);
+
+	const stateOut = witness.slice(1, 1+(25*64));
+	const stateOutU64 = utils.bitsToU64Array(stateOut);
+	// console.log(stateOutU64, expectedOut);
+	assert.deepEqual(stateOutU64, expectedOut);
+    });
+
+    it ("Final 2 (testvector generated from go)", async () => {
+	const input = utils.strsToBigInts(["254", "254", "254", "254", "254",
+	    "254", "254", "254", "254", "254", "254", "254", "254", "254",
+	    "254", "254", "254", "254", "254", "254", "254", "254", "254",
+	    "254", "254", "254", "254", "254", "254", "254", "254", "254"]);
+	const len = input.length*8;
+	const expectedOut = utils.strsToBigInts(["16852464862333879129",
+	    "9588646233186836430", "693207875935078627", "6545910230963382296",
+	    "3599194178366828471", "13130606490077331384",
+	    "10374798023615518933", "7285576075118720444",
+	    "4097382401500492461", "3968685317688314807",
+	    "3350659309646210303", "640023485234837464", "2550030127986774041",
+	    "8948768022010378840", "10678227883444996205",
+	    "1395278318096830339", "2744077813166753978",
+	    "13362598477502046010", "14601579319881128511",
+	    "4070707967569603186", "16833768365875755098",
+	    "1486295134719870048", "9161068934282437999",
+	    "8245604251371175619", "8421994351908003183"]);
+
+	const inIn = utils.bytesToBits(padInput(input));
+	const expectedOutBits = utils.u64ArrayToBits(expectedOut);
+
+	const witness = await cir.calculateWitness({ "in": inIn, "len": len }, true);
 
 	const stateOut = witness.slice(1, 1+(25*64));
 	const stateOutU64 = utils.bitsToU64Array(stateOut);
