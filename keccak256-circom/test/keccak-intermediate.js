@@ -35,6 +35,41 @@ describe("Keccak-Pad test", function () {
     });
 });
 
+describe("Keccak-PadV test", function () {
+    this.timeout(100000);
+
+    it ("PadV (testvector generated from go)", async () => {
+	const cir = await wasm_tester(path.join(__dirname, "circuits", "padv_test.circom"));
+
+	const input =
+	    [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31];
+	const len = input.length*8;
+	const inputLen = input.length;
+	console.log(input.length);
+	for (let i = 0; i < 136-inputLen; i++) {
+		input.push(0);
+	}
+	const expectedOut = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
+	    15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+	    1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128];
+
+	const stateIn = utils.bytesToBits(input);
+	console.log(input.length);
+	console.log("stateIn length:", stateIn.length);
+
+	const witness = await cir.calculateWitness({ "in": stateIn, "len": len }, true);
+
+	const stateOut = witness.slice(1, 1+(136*8));
+	const stateOutBytes = utils.bitsToBytes(stateOut);
+	// console.log(stateOutBytes, expectedOut);
+	assert.deepEqual(stateOutBytes, expectedOut);
+    });
+});
+
 describe("absorb test", function () {
     this.timeout(100000);
 

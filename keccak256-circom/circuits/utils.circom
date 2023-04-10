@@ -116,3 +116,14 @@ template ShL(n, r) {
         }
     }
 }
+
+function num_bits(n) {
+    var n_temp = n;
+    for (var i = 0; i < 256; i++) {
+       if (n_temp == 0) {
+          return i;
+       }
+       n_temp = n_temp \ 2;
+   }
+   return 255;
+}

@@ -5,6 +5,8 @@ pragma circom 2.0.0;
 
 include "./utils.circom";
 include "./permutations.circom";
+include "../node_modules/circomlib/circuits/comparators.circom";
+include "../node_modules/circomlib/circuits/switcher.circom";
 
 template Pad(nBits) {
     signal input in[nBits];
@@ -36,6 +38,41 @@ template Pad(nBits) {
     for (i=0; i<blockSize-8; i++) {
         out[i]<==out2[i];
     }
+}
+
+template PadV() {
+    var blockSize=136*8;
+
+    signal input in[blockSize];
+    signal input len;
+    signal output out[blockSize];
+    assert(len % 8 == 0);
+    assert(len <= blockSize);
+
+    component is_eq[blockSize-1];
+    component less_than[blockSize-1];
+    component sw1[blockSize-1];
+    component sw2[blockSize-1];
+    for (var i = 0; i < blockSize-1; i++) {
+        is_eq[i] = IsEqual();
+        is_eq[i].in[0] <== i;
+        is_eq[i].in[1] <== len;
+        sw1[i] = Switcher();
+        sw1[i].L <== in[i];
+        sw1[i].R <== 1;
+        sw1[i].sel <== is_eq[i].out;
+
+        less_than[i] = LessThan(num_bits(blockSize));
+        less_than[i].in[0] <== i;
+        less_than[i].in[1] <== len + 1; // for i <= len, we'd like to keep the original input (with the padded 1)
+        sw2[i] = Switcher();
+        sw2[i].L <== sw1[i].outL;
+        sw2[i].R <== 0;
+        sw2[i].sel <== 1 - less_than[i].out;
+
+        out[i] <== sw2[i].outL;
+    }
+    out[blockSize-1] <== 1;
 }
 
 template KeccakfRound(r) {
@@ -186,3 +223,55 @@ template Keccak(nBitsIn, nBitsOut) {
     }
 }
 
+template KeccakLongInput(nBitsIn, nBitsOut) {
+    var nBlocks = (nBitsIn + 136*8 - 1) / (136*8);
+    signal input in[nBitsIn];
+    signal input length;
+    signal output out[nBitsOut];
+    var i;
+
+    var absorbBlocks = nBlocks - 1;
+    var finalS[25*64];
+    component absorbs[absorbBlocks];
+    if (absorbBlocks == 0) {
+        for (var i = 0; i < 25*64; i++) {
+            finalS[i] = 0;
+        }
+    } else {
+        for (var i = 0; i < absorbBlocks; i++) {
+            absorbs[i] = Absorb();
+            for (var j = 0; j < 136*8; j++) {
+                absorbs[i].block[j] <== in[i*136*8 + j];
+            }
+            for (var j = 0; j < 25*64; j++) {
+                absorbs[i].s[j] <== (i == 0) ? 0 : absorbs[i-1].out[j];
+            }
+        }
+    }
+    component absorber[nBlocks-1];
+    for (i = 0; i < nBlocks-1; i++) {
+        absorber[i] = Absorb();
+
+        for (var j = 0; j < 136*8; j++) {
+            if (i*136*8 + j < length) {
+                absorber[i].block[j] <== in[i*136*8 + j];
+            } else {
+                absorber[i].block[j] <== 0;
+            }
+        }
+
+        for (var j = 0; j < 25*64; j++) {
+            // absorber[i].s[j] <== (i == 0) ? state[j] : absorber[i-1].out[j];
+        }
+    }
+
+    // component final = FinalV();
+
+    // component squeeze = Squeeze(nBitsOut);
+    // for (i = 0; i < 25*64; i++) {
+    //     squeeze.s[i] <== absorber[nBlocks-1].out[i];
+    // }
+    // for (i = 0; i < nBitsOut; i++) {
+    //     out[i] <== squeeze.out[i];
+    // }
+}
