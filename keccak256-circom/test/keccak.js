@@ -7,6 +7,7 @@ const c_tester = require("circom_tester").c;
 
 const utils = require("./utils");
 const keccak256 = require("keccak256");
+const wasm_tester = require("circom_tester/wasm/tester");
 
 describe("Keccak 32bytes full hash test", function () {
     this.timeout(100000);
@@ -154,5 +155,61 @@ describe("Keccak input: 4bytes, output: 32bytes, full hash test", function () {
 	    // assign output[0:4] into input for next iteration
 	    input = jsOutRaw.slice(0, 4);
 	}
+    });
+});
+
+describe("KeccakV 3000bits test", function () {
+    this.timeout(100000);
+
+	function padInputBits(inputBits) {
+		var inputLen = inputBits.length;
+		for (var i = 0; i < 3000-inputLen; i++) {
+			inputBits.push(i%2);
+		}
+		return inputBits;
+	}
+
+    let cir;
+    before(async () => {
+	cir = await wasm_tester(path.join(__dirname, "circuits", "keccak_3000V_256_test.circom"));
+	await cir.loadConstraints();
+	console.log("n_constraints", cir.constraints.length);
+    });
+
+    it ("KeccakV 32-bytes 1 (testvector generated from go)", async () => {
+	const input = [116, 101, 115, 116, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+	const expectedOut = [37, 17, 98, 135, 161, 178, 88, 97, 125, 150, 143,
+	    65, 228, 211, 170, 133, 153, 9, 88, 212, 4, 212, 175, 238, 249,
+	    210, 214, 116, 170, 85, 45, 21];
+	const len = input.length*8;
+
+	const inIn = utils.bytesToBits(input);
+
+	const witness = await cir.calculateWitness({ "in": padInputBits(inIn), "len": len }, true);
+
+	const stateOut = witness.slice(1, 1+(32*8));
+	const stateOutBytes = utils.bitsToBytes(stateOut);
+	// console.log(stateOutBytes, expectedOut);
+	assert.deepEqual(stateOutBytes, expectedOut);
+    });
+
+    it ("KeccakV 256 bytes (testvector generated from go)", async () => {
+	const input = [37, 17, 98, 135, 161, 178, 88, 97, 125, 150, 143, 65,
+	    228, 211, 170, 133, 153, 9, 88, 212, 4, 212, 175, 238, 249, 210,
+	    214, 116, 170, 85, 45, 21];
+	const expectedOut = [182, 104, 121, 2, 8, 48, 224, 11, 238, 244, 73,
+	    142, 67, 205, 166, 27, 10, 223, 142, 209, 10, 46, 171, 110, 239,
+	    68, 111, 116, 164, 127, 103, 141];
+	const len = input.length*8;
+
+	const inIn = utils.bytesToBits(input);
+
+	const witness = await cir.calculateWitness({ "in": padInputBits(inIn), "len": len }, true);
+
+	const stateOut = witness.slice(1, 1+(32*8));
+	const stateOutBytes = utils.bitsToBytes(stateOut);
+	// console.log(stateOutBytes, expectedOut);
+	assert.deepEqual(stateOutBytes, expectedOut);
     });
 });

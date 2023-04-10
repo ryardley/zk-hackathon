@@ -46,7 +46,6 @@ template PadV() {
     signal input in[blockSize];
     signal input len;
     signal output out[blockSize];
-    assert(len % 8 == 0);
     assert(len <= blockSize);
 
     component is_eq[blockSize-1];
@@ -160,10 +159,12 @@ template Final(nBits) {
 
 template FinalV() {
     var blockSize=136*8;
+    var stateSize=25*64;
 
     signal input in[blockSize];
     signal input len;
-    signal output out[25*64];
+    signal input s[stateSize];
+    signal output out[stateSize];
     var i;
 
     // pad
@@ -177,10 +178,10 @@ template FinalV() {
     for (i=0; i<blockSize; i++) {
         abs.block[i] <== pad.out[i];
     }
-    for (i=0; i<25*64; i++) {
+    for (i=0; i<stateSize; i++) {
         abs.s[i] <== 0;
     }
-    for (i=0; i<25*64; i++) {
+    for (i=0; i<stateSize; i++) {
         out[i] <== abs.out[i];
     }
 }
@@ -250,55 +251,141 @@ template Keccak(nBitsIn, nBitsOut) {
     }
 }
 
-template KeccakLongInput(nBitsIn, nBitsOut) {
-    var nBlocks = (nBitsIn + 136*8 - 1) / (136*8);
-    signal input in[nBitsIn];
-    signal input length;
-    signal output out[nBitsOut];
-    var i;
+template BlockDivision(nBitsIn) {
+    signal input in;
+    signal output quotient;
+    signal output remainder;
+    var blockSize = 136*8;
 
-    var absorbBlocks = nBlocks - 1;
-    var finalS[25*64];
-    component absorbs[absorbBlocks];
-    if (absorbBlocks == 0) {
-        for (var i = 0; i < 25*64; i++) {
-            finalS[i] = 0;
+    remainder <-- in % blockSize;
+    component lt = LessThan(num_bits(blockSize));
+    lt.in[0] <== remainder;
+    lt.in[1] <== blockSize;
+    lt.out === 1;
+
+    quotient <-- in \ blockSize;
+    quotient * blockSize + remainder === in;
+}
+
+template AbsorbOrThrough() {
+    var blockSize=136*8;
+    var stateSize = 25*64;
+
+    signal input s[stateSize];
+    signal input block[blockSize];
+    signal input is_absorb;
+    signal output out[stateSize];
+
+    component absorb = Absorb();
+
+    for (var i = 0; i < blockSize; i++) {
+        absorb.block[i] <== block[i];
+    }
+    for (var i = 0; i < stateSize; i++) {
+        absorb.s[i] <== s[i];
+    }
+
+    component out_switcher[stateSize];
+    for (var i = 0; i < stateSize; i++) {
+        out_switcher[i] = Switcher();
+        out_switcher[i].L <== s[i];
+        out_switcher[i].R <== absorb.out[i];
+        out_switcher[i].sel <== is_absorb;
+
+        out[i] <== out_switcher[i].outL;
+    }
+}
+
+template ShiftLeftBlock(nIn) {
+    var blockSize = 136*8;
+    signal input in[nIn];
+    signal input doShift;
+    signal output out[nIn];
+
+    signal shifted[nIn];
+    for (var i = 0; i < nIn; i++) {
+        shifted[i] <== in[(i+blockSize)%nIn];
+    }
+    component switcher[nIn];
+    for (var i = 0; i < nIn; i++) {
+        switcher[i] = Switcher();
+        switcher[i].L <== in[i];
+        switcher[i].R <== shifted[i];
+        switcher[i].sel <== doShift;
+
+        out[i] <== switcher[i].outL;
+    }
+}
+
+template KeccakV(maxBitsIn, nBitsOut) {
+    var nBlocks = (maxBitsIn + 136*8 - 1) \ (136*8);
+    var blockSize = 136*8;
+    var stateSize = 25*64;
+    signal input in[maxBitsIn];
+    signal input len;
+
+    signal output out[nBitsOut];
+
+    component bd = BlockDivision(maxBitsIn);
+    bd.in <== len;
+    var numAbsorbBlocks = bd.quotient;
+    var finalLen = bd.remainder;
+
+    var maxAbsorbBlocks = nBlocks - 1;
+    component absorbs[maxAbsorbBlocks];
+    component isAbsorb[maxAbsorbBlocks];
+    component leftShift[maxAbsorbBlocks];
+
+    var finalInS[stateSize];
+    var shifted[maxBitsIn] = in;
+    if (maxAbsorbBlocks == 0) {
+        for (var i = 0; i < stateSize; i++) {
+            finalInS[i] = 0;
         }
     } else {
-        for (var i = 0; i < absorbBlocks; i++) {
-            absorbs[i] = Absorb();
-            for (var j = 0; j < 136*8; j++) {
-                absorbs[i].block[j] <== in[i*136*8 + j];
-            }
-            for (var j = 0; j < 25*64; j++) {
-                absorbs[i].s[j] <== (i == 0) ? 0 : absorbs[i-1].out[j];
-            }
-        }
-    }
-    component absorber[nBlocks-1];
-    for (i = 0; i < nBlocks-1; i++) {
-        absorber[i] = Absorb();
+        for (var i = 0; i < maxAbsorbBlocks; i++) {
+            isAbsorb[i] = LessThan(num_bits(maxAbsorbBlocks));
+            isAbsorb[i].in[0] <== i;
+            isAbsorb[i].in[1] <== numAbsorbBlocks;
 
-        for (var j = 0; j < 136*8; j++) {
-            if (i*136*8 + j < length) {
-                absorber[i].block[j] <== in[i*136*8 + j];
+            absorbs[i] = AbsorbOrThrough();
+            absorbs[i].is_absorb <== isAbsorb[i].out;
+            for (var j = 0; j < blockSize; j++) {
+                absorbs[i].block[j] <== shifted[j];
+            }
+            if (i == 0) {
+                for (var j = 0; j < stateSize; j++) {
+                    absorbs[i].s[j] <== 0;
+                }
             } else {
-                absorber[i].block[j] <== 0;
+                for (var j = 0; j < stateSize; j++) {
+                    absorbs[i].s[j] <== absorbs[i-1].out[i-1];
+                }
             }
+            leftShift[i] = ShiftLeftBlock(maxBitsIn);
+            leftShift[i].doShift <== isAbsorb[i].out;
+            for (var j = 0; j < maxBitsIn; j++) {
+                leftShift[i].in[j] <== shifted[j];
+            }
+            shifted = leftShift[i].out;
         }
-
-        for (var j = 0; j < 25*64; j++) {
-            // absorber[i].s[j] <== (i == 0) ? state[j] : absorber[i-1].out[j];
-        }
+        finalInS = absorbs[maxAbsorbBlocks-1].out;
     }
 
-    // component final = FinalV();
+    component f = FinalV();
+    for (var i = 0; i < stateSize; i++) {
+        f.s[i] <== finalInS[i];
+    }
+    for (var i = 0; i < blockSize; i++) {
+        f.in[i] <== shifted[i];
+    }
+    f.len <== finalLen;
 
-    // component squeeze = Squeeze(nBitsOut);
-    // for (i = 0; i < 25*64; i++) {
-    //     squeeze.s[i] <== absorber[nBlocks-1].out[i];
-    // }
-    // for (i = 0; i < nBitsOut; i++) {
-    //     out[i] <== squeeze.out[i];
-    // }
+    component squeeze = Squeeze(nBitsOut);
+    for (var i=0; i<stateSize; i++) {
+        squeeze.s[i] <== f.out[i];
+    }
+    for (var i=0; i<nBitsOut; i++) {
+        out[i] <== squeeze.out[i];
+    }
 }
