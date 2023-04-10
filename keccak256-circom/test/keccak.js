@@ -217,23 +217,6 @@ describe("KeccakV 3000bits test", function () {
 describe("KeccakV bsc_header test", function () {
     this.timeout(10000000);
 
-	// Function to convert hex string to Uint8Array
-	function hexStringToByteArray(hexString) {
-		if (hexString.length % 2 !== 0) {
-			throw new Error("Invalid hex string length");
-		}
-	
-		const byteArray = new Array(hexString.length / 2);
-		for (let i = 0; i < hexString.length; i += 2) {
-			const byte = parseInt(hexString.substr(i, 2), 16);
-			if (isNaN(byte)) {
-				throw new Error(`Invalid hex character at position ${i}`);
-			}
-			byteArray[i / 2] = byte;
-		}
-		return byteArray;
-	}
-
 	function padInputBits(inputBits) {
 		var inputLen = inputBits.length;
 		for (var i = 0; i < 1075*8-inputLen; i++) {

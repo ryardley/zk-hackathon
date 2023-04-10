@@ -179,7 +179,7 @@ template FinalV() {
         abs.block[i] <== pad.out[i];
     }
     for (i=0; i<stateSize; i++) {
-        abs.s[i] <== 0;
+        abs.s[i] <== s[i];
     }
     for (i=0; i<stateSize; i++) {
         out[i] <== abs.out[i];
@@ -359,7 +359,7 @@ template KeccakV(maxBitsIn, nBitsOut) {
                 }
             } else {
                 for (var j = 0; j < stateSize; j++) {
-                    absorbs[i].s[j] <== absorbs[i-1].out[i-1];
+                    absorbs[i].s[j] <== absorbs[i-1].out[j];
                 }
             }
             leftShift[i] = ShiftLeftBlock(maxBitsIn);
