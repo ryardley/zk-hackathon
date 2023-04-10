@@ -315,44 +315,35 @@ template ECDSARecover(n, k) {
     }
     log("rx", r[0], r[1], r[2], r[3]);
     log("ry", ry[0], ry[1], ry[2], ry[3]);
+    // compute multiplicative inverse of r mod order
+    var r_inv[100] = mod_inv(n, k, r, order);
     // compute sR
-    component sr = Secp256k1ScalarMultNoConstraint(n, k);
+    var r_invs[100] = prod_mod_p(n, k, r_inv, s, order);
+    component r_invsr = Secp256k1ScalarMultNoConstraint(n, k);
     for (var i = 0; i < k; i++) {
-        sr.scalar[i] <-- s[i];
-        sr.point[0][i] <-- r[i];
-        sr.point[1][i] <-- ry[i];
+        r_invsr.scalar[i] <-- r_invs[i];
+        r_invsr.point[0][i] <-- r[i];
+        r_invsr.point[1][i] <-- ry[i];
     }
-    log("srx", sr.out[0][0], sr.out[0][1], sr.out[0][2], sr.out[0][3]);
-    log("sry", sr.out[1][0], sr.out[1][1], sr.out[1][2], sr.out[1][3]);
     // compute zG
-    component zg = Secp256k1ScalarMultNoConstraint(n, k);
+    var r_invz[100] = prod_mod_p(n, k, r_inv, msghash, order);
+    component r_invzg = Secp256k1ScalarMultNoConstraint(n, k);
     var gx[100] = get_gx(n, k);
     var gy[100] = get_gy(n, k);
     for (var i = 0; i < k; i++) {
-        zg.scalar[i] <-- msghash[i];
-        zg.point[0][i] <-- gx[i];
-        zg.point[1][i] <-- gy[i];
+        r_invzg.scalar[i] <-- r_invz[i];
+        r_invzg.point[0][i] <-- gx[i];
+        r_invzg.point[1][i] <-- gy[i];
     }
-    log("zgx", zg.out[0][0], zg.out[0][1], zg.out[0][2], zg.out[0][3]);
-    log("zgy", zg.out[1][0], zg.out[1][1], zg.out[1][2], zg.out[1][3]);
-    // compute sR - zG
-    var nzg[2][100];
-    nzg[0] = zg.out[0];
-    nzg[1] = long_sub_mod_p(n, k, p, zg.out[1], p);
-    var interm[2][100] = secp256k1_addunequal_func(n, k, sr.out[0], sr.out[1], nzg[0], nzg[1]);
-    // compute multiplicative inverse of r mod order
-    var r_inv[100] = mod_inv(n, k, r, order);
-    // compute public key
-    component pk = Secp256k1ScalarMultNoConstraint(n, k);
-    for (var i = 0; i < k; i++) {
-        pk.scalar[i] <-- r_inv[i];
-        pk.point[0][i] <-- interm[0][i];
-        pk.point[1][i] <-- interm[1][i];
-    }
+    // compute r_invsR - r_invzG
+    var neg_r_invzg[2][100];
+    neg_r_invzg[0] = r_invzg.out[0];
+    neg_r_invzg[1] = long_sub_mod_p(n, k, p, r_invzg.out[1], p);
+    var pk[2][100] = secp256k1_addunequal_func(n, k, r_invsr.out[0], r_invsr.out[1], neg_r_invzg[0], neg_r_invzg[1]);
 
     for (var i = 0; i < k; i++) {
-        pubKey[0][i] <-- pk.out[0][i];
-        pubKey[1][i] <-- pk.out[1][i];
+        pubKey[0][i] <-- pk[0][i];
+        pubKey[1][i] <-- pk[1][i];
     }
 
     log("px", pubKey[0][0], pubKey[0][1], pubKey[0][2], pubKey[0][3]);
