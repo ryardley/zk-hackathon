@@ -1,10 +1,9 @@
 pragma circom 2.0.2;
-include "../../node_modules/circomlib/circuits/switcher.circom";
 include "../../node_modules/circomlib/circuits/bitify.circom";
 include "../../node_modules/circomlib/circuits/comparators.circom";
 include "../../node_modules/circomlib/circuits/switcher.circom";
 
-function num_bits(n) {
+function num_bits2(n) {
     var n_temp = n;
     for (var i = 0; i < 256; i++) {
        if (n_temp == 0) {
@@ -20,7 +19,7 @@ template ShiftLeft(nIn, minShift, maxShift) {
     signal input shift;
     signal output out[nIn];
 
-    var shiftBits = num_bits(maxShift - minShift);
+    var shiftBits = num_bits2(maxShift - minShift);
 
     component n2b;
     signal shifts[shiftBits][nIn];

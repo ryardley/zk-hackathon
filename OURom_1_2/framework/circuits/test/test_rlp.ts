@@ -20,6 +20,14 @@ describe("RLP decoding", function () {
         await circuit.loadConstraints();
         console.log("constraints: " + circuit.constraints.length);
     });
+    function uint8ArrayToHexString(uint8Array: any) {
+        let hexString = "";
+        for (let i = 0; i < uint8Array.length; i++) {
+          const hex = uint8Array[i].toString(16);
+          hexString += hex.length === 1 ? "0" + hex : hex;
+        }
+        return hexString;
+      }
 
     var test_rlp_decode = function (header: any) {
         console.log("Start test_rlp_decode");
@@ -34,6 +42,13 @@ describe("RLP decoding", function () {
         for (let i = 0; i < encoded.length; i++) {
             input[i] = BigInt(encoded[i]);
         }
+
+        let sarr = ""
+        for (let i = 0; i < encoded.length; i++) {
+            sarr += encoded[i] + ", "
+        }
+        console.log(sarr);
+        console.log(uint8ArrayToHexString(encoded));
         for (let i = encoded.length; i < RLP_CIRCUIT_MAX_INPUT_LEN; i++) {
             input[i] = 0n;
         }
