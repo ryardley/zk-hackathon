@@ -289,7 +289,6 @@ template ECDSARecover(n, k) {
 
     signal output pubKey[2][k];
 
-    v * (v - 1) === 0; // v must be one or zero
     var p[100] = get_secp256k1_prime(n, k);
     var order[100] = get_secp256k1_order(n, k);
 
