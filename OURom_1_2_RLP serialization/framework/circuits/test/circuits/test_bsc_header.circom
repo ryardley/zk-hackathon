@@ -1,21 +1,8 @@
 pragma circom 2.0.1;
 
-include "./circom-ecdsa/ecdsa.circom";
-include "./keccak256-circom/keccak.circom";
-include "./rlp.circom";
-include "../../node_modules/circomlib/circuits/comparators.circom";
-
-function min(a, b) {
-    if(a < b)
-        return a;
-    return b;
-}
-
-function max(a, b) {
-    if(a > b)
-        return a;
-    return b;
-}
+include "../../../node_modules/circomlib/circuits/comparators.circom";
+include "../../circuits/rlp.circom";
+include "../../../node_modules/circom-pairing/circuits/bigint_func.circom";
 
 template ShiftRight(nIn, nInBits) {
     signal input in[nIn];
@@ -58,9 +45,14 @@ template bytesToBigInt(n) {
     signal output out;
 
     assert(n <= 64);
+    // assume 6 >= log2(n)
     component shiftRight = ShiftRight(n, 6);
     shiftRight.in <== in;
     shiftRight.shift <== n - inHexLen;
+
+    // for (var idx = 0; idx < n; idx++) {
+    //     log(shiftRight.out[idx]);
+    // }
 
     var temp = 0;
     for (var idx = 0; idx < n; idx++) {
@@ -69,25 +61,14 @@ template bytesToBigInt(n) {
     out <== temp;
 }
 
-template BSCHeaderVerification() {
+template TestRLPHeader() {
     var maxLen = 1075;
-    // RLP representation of the bsc header in bytes
+    // Input, RLP representation of the block.
     signal input data[maxLen]; // 2150 bytes of RLP encoding
-    // RLP data length
-    signal input len;
-    // validator signature in hex(4-bit)
-    signal input r[4];
-    signal input s[4];
-    signal input v; // 0, 1, 2, 3
-
-    // bsc headER fields
+    // Outputs.
     signal output coinbase;
     signal output chainId;
     signal output blockNumber;
-    // validator public key in hex(4-bit)
-    signal output pubKey[2][4];
-    // bsc header hash in hex(4-bit)
-    signal output hashValue[4];
 
     // RLP stuff
     component rlp = RLPDecodeFixedList(
@@ -131,35 +112,6 @@ template BSCHeaderVerification() {
     blockNumber <== b2bNumber.out;
     log("block number is:");
     log(blockNumber);
-
-    component hash = KeccakV(1075 * 8, 256);
-    component n2b[1075];
-    for (var i = 0; i < 1075; i++) {
-        n2b[i] = Num2Bits(8);
-        n2b[i].in <== data[i];
-        for (var j = 0; j < 8; j++) {
-            hash.in[i * 8 + j] <== n2b[i].out[j];
-        }
-    }
-    hash.len <== len * 8;
-
-    component erecover = ECDSARecover(64, 4);
-    component b2n[4];
-    for (var i = 0; i < 4; i++) {
-        erecover.r[i] <== r[i];
-        erecover.s[i] <== s[i];
-        b2n[i] = Bits2Num(64);
-        for (var j = 0; j < 64; j++) {
-            b2n[i].in[j] <== hash.out[i * 64 + j];
-        }
-        erecover.msghash[i] <== b2n[i].out;
-        hashValue[i] <== b2n[i].out;
-    }
-    erecover.v <== v;
-    for (var i = 0; i < 4; i++) {
-        pubKey[0][i] <== erecover.pubKey[0][i];
-        pubKey[1][i] <== erecover.pubKey[1][i];
-    }
 }
 
-component main = BSCHeaderVerification();
+component main {public [data]} = TestRLPHeader();
