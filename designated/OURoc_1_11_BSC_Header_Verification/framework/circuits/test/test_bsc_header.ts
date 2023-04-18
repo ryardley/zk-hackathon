@@ -131,8 +131,8 @@ describe("test bsc header", function () {
 
     before(async function () {
         console.log("Initialize the circuit test_rlp with wasm tester");
-        // circuit = await wasm_tester(path.join(__dirname, "../circuits", "bsc_header.circom"));
-        circuit = await wasm_tester(path.join(__dirname, "../circuits", "bsc_header.circom"), { output: "./bsc_circuit_out", recompile: false });
+        circuit = await wasm_tester(path.join(__dirname, "../circuits", "bsc_header.circom"));
+        // circuit = await wasm_tester(path.join(__dirname, "../circuits", "bsc_header.circom"), { output: "./bsc_circuit_out", recompile: false });
         await circuit.loadConstraints();
         console.log("constraints: " + circuit.constraints.length);
     });
