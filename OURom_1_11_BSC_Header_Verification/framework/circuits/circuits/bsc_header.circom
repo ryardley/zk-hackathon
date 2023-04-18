@@ -72,7 +72,7 @@ template bytesToBigInt(n) {
 template BSCHeaderVerification() {
     var maxLen = 1075;
     // RLP representation of the bsc header in bytes
-    signal input data[maxLen]; // 2150 bytes of RLP encoding
+    signal input data[maxLen]; // 1075 bytes of RLP encoding
     // RLP data length
     signal input len;
     // validator signature in hex(4-bit)
@@ -80,7 +80,7 @@ template BSCHeaderVerification() {
     signal input s[4];
     signal input v; // 0, 1, 2, 3
 
-    // bsc headER fields
+    // bsc header fields
     signal output coinbase;
     signal output chainId;
     signal output blockNumber;
