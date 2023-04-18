@@ -169,23 +169,40 @@ describe("test bsc header", function () {
                 "v": v,
             });
 
-        const pubKey0 = uint4ArrayToHexString(witness.slice(4, 4 + 64));
-        const pubKey1 = uint4ArrayToHexString(witness.slice(4 + 64, 4 + 128));
-        const hashBits = witness.slice(4 + 128, 4 + 128 + 256);
+        const pubKey0 = witness.slice(4, 8);
+        const pubKey1 = witness.slice(8, 12);
+        const hash64s = witness.slice(12, 16);
         console.log("pubKey0: ", pubKey0);
         console.log("pubKey1: ", pubKey1);
-        console.log("hashBits: ", hashBits);
+        console.log("hash64s: ", hash64s);
         // account address == coinbase
         expect(witness[1]).to.equal(BigInt(header.coinbase));
         // chain ID
         expect(witness[2]).to.equal(BigInt(chainId));
         // block number
         expect(witness[3]).to.equal(BigInt(header.number));
+        const pxHex = uint64ArrayToHexString(pubKey0);
+        const pyHex = uint64ArrayToHexString(pubKey1)
+        console.log("pxHex: ", pxHex);
+        console.log("pyHex: ", pyHex);
+        const pubKey = "0x" + "04" + pxHex + pyHex;
+        // const pubKey = "0x" + "02" + pxHex;
+        console.log("pubkey: ", pubKey);
+        const address = ethers.utils.computeAddress(pubKey);
+        console.log("address: ", address);
+        // const hash = "0x" + uint8ArrayToHexString([47, 23, 206, 197, 127, 147, 238, 27, 221, 135, 239, 15, 62, 207, 115, 45, 64, 214, 88, 58, 211, 217, 210, 67, 86, 155, 32, 59, 221, 249, 83, 123].reverse());
+        const hash = "0x" + uint64ArrayToHexString(hash64s);
+        const expected = ethers.utils.recoverAddress(hash, {
+            r: "0x0670403d7dfc4c816a313885fe04b850f96f27b2e9fd88b147c882ad7caf9b96",
+            s: "0x4abfe6543625fcca73b56fe29d3046831574b0681d52bf5383d6f2187b6276c1",
+            v: 0,
+        });
+        expect(address).to.equal(expected);
         await circuit.checkConstraints(witness);
     });
 });
 
-describe("random testing", () => {
+describe("signature testing", () => {
     it("just compute address", () => {
         // const px = [15962832680284086442n, 8598231863319617283n, 12189755684745873662n, 7283543198971106409n];
         // const py = [5523025989901260818n, 4498307467847780390n, 14638455475173373968n, 4620569585519891800n];
@@ -197,6 +214,7 @@ describe("random testing", () => {
         // const pubKey = "0x" + "02" + pxHex;
         console.log("pubkey: ", pubKey);
         const address = ethers.utils.computeAddress(pubKey);
+
         const hash = "0x" + uint8ArrayToHexString([47, 23, 206, 197, 127, 147, 238, 27, 221, 135, 239, 15, 62, 207, 115, 45, 64, 214, 88, 58, 211, 217, 210, 67, 86, 155, 32, 59, 221, 249, 83, 123].reverse());
         const expected = ethers.utils.recoverAddress(hash, {
             r: "0x0670403d7dfc4c816a313885fe04b850f96f27b2e9fd88b147c882ad7caf9b96",
