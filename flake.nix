@@ -14,14 +14,15 @@
         };
         circom-lsp = pkgs.rustPlatform.buildRustPackage {
           name = "circom-lsp";
-          version = "0.1.3";
+          version = "0.1.3"; 
           src = pkgs.fetchFromGitHub {
             owner = "rubydusa";
             repo = "circom-lsp";
             rev = "v0.1.3";
             sha256 = "sha256-Y71qmeDUh6MwSlFrSnG+Nr/un5szTUo27+J/HphGr7M=";
           };
-          cargoSha256 = "";
+          sourceRoot = "source/server";
+          cargoSha256 = "sha256-JdbDH8o22TqzQZqPRSohxy2Qjo9DfRzSBF1SG0NzKNQ";
         };
       in
       with pkgs;
