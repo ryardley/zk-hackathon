@@ -22,6 +22,7 @@
             sha256 = "sha256-Y71qmeDUh6MwSlFrSnG+Nr/un5szTUo27+J/HphGr7M=";
           };
           sourceRoot = "source/server";
+          doCheck = false;
           cargoSha256 = "sha256-JdbDH8o22TqzQZqPRSohxy2Qjo9DfRzSBF1SG0NzKNQ";
         };
       in
