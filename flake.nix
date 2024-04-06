@@ -19,7 +19,7 @@
             owner = "rubydusa";
             repo = "circom-lsp";
             rev = "v0.1.3";
-            sha256 = "";
+            sha256 = "sha256-Y71qmeDUh6MwSlFrSnG+Nr/un5szTUo27+J/HphGr7M=";
           };
           cargoSha256 = "";
         };
